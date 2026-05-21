@@ -1,0 +1,30 @@
+{
+  "name": "verus-wallet",
+  "version": "5.2.0",
+  "private": true,
+  "description": "MetaMask-style Verus wallet extension \u2014 bridges web pages to your local Verus CLI",
+  "scripts": {
+    "dev": "webpack --watch --mode development",
+    "build": "webpack --mode production",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "verus-typescript-primitives": "github:VerusCoin/verus-typescript-primitives#7f0fd7ff7a27aefd66c85fbc7dc14862779548da"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.0.287",
+    "@types/react": "18.3.18",
+    "@types/react-dom": "18.3.5",
+    "copy-webpack-plugin": "14.0.0",
+    "css-loader": "7.1.2",
+    "html-webpack-plugin": "5.6.3",
+    "node-polyfill-webpack-plugin": "4.1.0",
+    "style-loader": "4.0.0",
+    "ts-loader": "9.5.2",
+    "typescript": "5.8.3",
+    "webpack": "5.105.4",
+    "webpack-cli": "7.0.2"
+  }
+}

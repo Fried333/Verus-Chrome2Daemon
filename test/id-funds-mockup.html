@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ID Funds - Mockup Comparison</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #e5e7eb; display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; padding: 20px; }
+    .label { text-align: center; font-size: 12px; color: #656d76; font-weight: 600; margin-bottom: 6px; }
+    .phone { width: 380px; height: 720px; background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.15); display: flex; flex-direction: column; }
+
+    .header { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eaeef2; }
+    .header-left { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: 700; }
+    .avatar.blue { background: #2563eb; }
+    .avatar.green { background: #059669; }
+    .account-name { font-size: 13px; font-weight: 600; }
+    .arrow { font-size: 10px; color: #8b949e; }
+
+    .balance-card { padding: 20px 16px; text-align: center; background: linear-gradient(135deg, #1e3a5f 0%, #0d1117 100%); color: white; }
+    .bal-label { font-size: 11px; opacity: 0.7; }
+    .bal-amount { font-size: 28px; font-weight: 700; font-family: monospace; margin: 4px 0; }
+    .bal-sub { font-size: 11px; opacity: 0.5; }
+    .bal-extra { font-size: 12px; opacity: 0.8; margin-top: 6px; padding: 4px 10px; background: rgba(255,255,255,0.1); border-radius: 6px; display: inline-block; }
+    .addr-pill { display: inline-block; font-size: 10px; font-family: monospace; background: rgba(255,255,255,0.15); padding: 3px 10px; border-radius: 12px; margin-top: 6px; }
+
+    .actions { display: flex; gap: 8px; padding: 12px 16px; }
+    .action-btn { flex: 1; padding: 10px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; }
+    .action-btn.primary { background: #2563eb; color: white; }
+    .action-btn.secondary { background: #f6f8fa; color: #1f2328; border: 1px solid #d0d7de; }
+
+    .content { flex: 1; overflow-y: auto; }
+    .section-header { padding: 8px 16px 4px; font-size: 10px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .item { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f0f2f5; }
+    .item-left { display: flex; align-items: center; gap: 10px; }
+    .item-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: white; flex-shrink: 0; }
+    .item-name { font-size: 14px; font-weight: 600; }
+    .item-sub { font-size: 11px; color: #8b949e; }
+    .item-amount { font-size: 14px; font-weight: 600; font-family: monospace; }
+    .item-arrow { color: #8b949e; }
+
+    .bottom-nav { display: flex; border-top: 1px solid #eaeef2; background: #fff; }
+    .nav-item { flex: 1; padding: 10px 0 8px; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10px; font-weight: 500; color: #8b949e; }
+    .nav-item.active { color: #2563eb; }
+
+    .id-banner { background: #f0fdf4; border-bottom: 1px solid #bbf7d0; padding: 8px 16px; display: flex; align-items: center; gap: 8px; }
+    .id-badge { background: #059669; color: white; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
+
+    .account-item { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #f0f2f5; cursor: pointer; }
+    .account-item:hover { background: #f6f8fa; }
+    .account-item.active { background: #eff6ff; border-left: 3px solid #2563eb; }
+    .acct-left { display: flex; align-items: center; gap: 10px; }
+    .acct-info .acct-name { font-size: 14px; font-weight: 600; }
+    .acct-info .acct-addr { font-size: 10px; font-family: monospace; color: #8b949e; }
+    .acct-bal { text-align: right; }
+    .acct-bal .acct-vrsc { font-size: 13px; font-weight: 600; font-family: monospace; }
+    .acct-bal .acct-cur { font-size: 10px; color: #8b949e; }
+
+    .divider { height: 1px; background: #d0d7de; margin: 8px 16px; }
+    .id-section { background: #fafdf7; border-top: 1px solid #d1fae5; }
+    .id-section .section-header { color: #059669; }
+  </style>
+</head>
+<body>
+
+<!-- OPTION A: Address-first with IDs underneath -->
+<div>
+  <div class="label">Option A: Address-First</div>
+  <div class="label" style="font-weight:400;font-size:11px;color:#8b949e;margin-bottom:6px">IDs shown under R-address currencies</div>
+  <div class="phone">
+    <div class="header">
+      <div class="header-left">
+        <div class="avatar blue">SF</div>
+        <span class="account-name">Steve's Wallet</span>
+        <span class="arrow">▾</span>
+      </div>
+    </div>
+    <div class="balance-card">
+      <div class="bal-label">Address Balance</div>
+      <div class="bal-amount">79.039 VRSC</div>
+      <div class="bal-extra">+ 37.8 VRSC in 2 VerusIDs</div>
+      <div class="addr-pill">RKirf...jgHL</div>
+    </div>
+    <div class="actions">
+      <div class="action-btn primary">↑ Send</div>
+      <div class="action-btn secondary">↓ Receive</div>
+    </div>
+    <div class="content">
+      <div class="section-header">Address Currencies</div>
+      <div class="item">
+        <div class="item-left">
+          <div class="item-icon" style="background:#2563eb">VR</div>
+          <div><div class="item-name">VRSC</div></div>
+        </div>
+        <div class="item-amount">79.039</div>
+      </div>
+      <div class="item">
+        <div class="item-left">
+          <div class="item-icon" style="background:#8b5cf6">BI</div>
+          <div><div class="item-name">bitcoins</div></div>
+        </div>
+        <div class="item-amount">4,956.22</div>
+      </div>
+
+      <div class="id-section">
+        <div class="section-header">user2.example@ Balance</div>
+        <div class="item">
+          <div class="item-left">
+            <div class="item-icon" style="background:#059669">VR</div>
+            <div><div class="item-name">VRSC</div><div class="item-sub">user2.example@</div></div>
+          </div>
+          <div class="item-amount">0.50</div>
+        </div>
+      </div>
+
+      <div class="id-section">
+        <div class="section-header">user1.example@ Balance</div>
+        <div class="item">
+          <div class="item-left">
+            <div class="item-icon" style="background:#059669">VR</div>
+            <div><div class="item-name">VRSC</div><div class="item-sub">user1.example@</div></div>
+          </div>
+          <div class="item-amount">37.30</div>
+        </div>
+        <div class="item">
+          <div class="item-left">
+            <div class="item-icon" style="background:#059669">DA</div>
+            <div><div class="item-name">DAI.vETH</div><div class="item-sub">user1.example@</div></div>
+          </div>
+          <div class="item-amount">52.27</div>
+        </div>
+      </div>
+    </div>
+    <div class="bottom-nav">
+      <div class="nav-item active">💰 Wallet</div>
+      <div class="nav-item">⇄ Swap</div>
+      <div class="nav-item">🆔 IDs</div>
+    </div>
+  </div>
+</div>
+
+<!-- OPTION B: Identity-first -->
+<div>
+  <div class="label">Option B: Identity-First</div>
+  <div class="label" style="font-weight:400;font-size:11px;color:#8b949e;margin-bottom:6px">Select identity as your "account"</div>
+  <div class="phone">
+    <div class="header">
+      <div class="header-left">
+        <div class="avatar green">ID</div>
+        <span class="account-name">user2.example@</span>
+        <span class="arrow">▾</span>
+      </div>
+    </div>
+    <div class="balance-card" style="background: linear-gradient(135deg, #065f46 0%, #0d1117 100%);">
+      <div class="id-badge" style="display:inline-block;margin-bottom:6px">VERUSID</div>
+      <div class="bal-label">Identity Balance</div>
+      <div class="bal-amount">0.50 VRSC</div>
+      <div class="addr-pill">i65fv...sUKCV</div>
+    </div>
+    <div class="actions">
+      <div class="action-btn primary">↑ Send</div>
+      <div class="action-btn secondary">↓ Receive</div>
+    </div>
+    <div class="content">
+      <div class="section-header">Currencies</div>
+      <div class="item">
+        <div class="item-left">
+          <div class="item-icon" style="background:#059669">VR</div>
+          <div><div class="item-name">VRSC</div></div>
+        </div>
+        <div class="item-amount">0.50</div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="section-header">Identity Info</div>
+      <div class="item">
+        <div class="item-left"><div><div class="item-sub">Primary Address</div><div style="font-size:11px;font-family:monospace">RKirf...jgHL</div></div></div>
+      </div>
+      <div class="item">
+        <div class="item-left"><div><div class="item-sub">Revocation</div><div style="font-size:11px;font-family:monospace">self</div></div></div>
+      </div>
+      <div class="item">
+        <div class="item-left"><div><div class="item-sub">Recovery</div><div style="font-size:11px;font-family:monospace">provider-a.example@</div></div></div>
+      </div>
+    </div>
+    <div class="bottom-nav">
+      <div class="nav-item active">💰 Wallet</div>
+      <div class="nav-item">⇄ Swap</div>
+      <div class="nav-item">🆔 IDs</div>
+    </div>
+  </div>
+</div>
+
+<!-- OPTION C: Flat list account selector -->
+<div>
+  <div class="label">Option C: Flat List</div>
+  <div class="label" style="font-weight:400;font-size:11px;color:#8b949e;margin-bottom:6px">R-addresses and IDs as equal accounts</div>
+  <div class="phone">
+    <div class="header">
+      <div class="header-left">
+        <span class="account-name">Select Account</span>
+      </div>
+    </div>
+    <div class="content">
+      <div class="section-header">Addresses</div>
+      <div class="account-item active">
+        <div class="acct-left">
+          <div class="avatar blue">A1</div>
+          <div class="acct-info">
+            <div class="acct-name">Steve's Wallet</div>
+            <div class="acct-addr">RKirf...jgHL</div>
+          </div>
+        </div>
+        <div class="acct-bal">
+          <div class="acct-vrsc">79.039</div>
+          <div class="acct-cur">+ 5 currencies</div>
+        </div>
+      </div>
+      <div class="account-item">
+        <div class="acct-left">
+          <div class="avatar blue">A2</div>
+          <div class="acct-info">
+            <div class="acct-name">Trading</div>
+            <div class="acct-addr">RUd7f...BekF</div>
+          </div>
+        </div>
+        <div class="acct-bal">
+          <div class="acct-vrsc">37.798</div>
+          <div class="acct-cur">+ 12 currencies</div>
+        </div>
+      </div>
+
+      <div class="section-header">VerusIDs</div>
+      <div class="account-item">
+        <div class="acct-left">
+          <div class="avatar green">ID</div>
+          <div class="acct-info">
+            <div class="acct-name">user2.example@</div>
+            <div class="acct-addr">i65fv...sUKCV</div>
+          </div>
+        </div>
+        <div class="acct-bal">
+          <div class="acct-vrsc">0.50</div>
+          <div class="acct-cur">1 currency</div>
+        </div>
+      </div>
+      <div class="account-item">
+        <div class="acct-left">
+          <div class="avatar green">ID</div>
+          <div class="acct-info">
+            <div class="acct-name">user1.example@</div>
+            <div class="acct-addr">i7KJw...5howv</div>
+          </div>
+        </div>
+        <div class="acct-bal">
+          <div class="acct-vrsc">37.30</div>
+          <div class="acct-cur">+ 8 currencies</div>
+        </div>
+      </div>
+      <div class="account-item">
+        <div class="acct-left">
+          <div class="avatar green">ID</div>
+          <div class="acct-info">
+            <div class="acct-name">vault.example@</div>
+            <div class="acct-addr">i81aJ...1yguu</div>
+          </div>
+        </div>
+        <div class="acct-bal">
+          <div class="acct-vrsc">0.00</div>
+          <div class="acct-cur">revoked</div>
+        </div>
+      </div>
+      <div class="account-item">
+        <div class="acct-left">
+          <div class="avatar green">ID</div>
+          <div class="acct-info">
+            <div class="acct-name">veruscx@</div>
+            <div class="acct-addr">iG4xR...9eHqC</div>
+          </div>
+        </div>
+        <div class="acct-bal">
+          <div class="acct-vrsc">0.00</div>
+        </div>
+      </div>
+    </div>
+    <div class="bottom-nav">
+      <div class="nav-item active">💰 Wallet</div>
+      <div class="nav-item">⇄ Swap</div>
+      <div class="nav-item">🆔 IDs</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

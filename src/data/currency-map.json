@@ -1,0 +1,101 @@
+{
+  "currencies": {
+    "i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV": "VRSC",
+    "i9nwxtKuVYX4MSbeULLiK2ttVi6rUEhh4X": "vETH",
+    "i3f7tSctFkiPpiedY8QR5Tep9p4qDVebDx": "Bridge.vETH",
+    "iGBs4DWztRNvNEJBt4mqHszLxfKTNHTkhM": "DAI.vETH",
+    "iCkKJuJScy4Z6NSDK7Mt42ZAB2NEnAE1o4": "MKR.vETH",
+    "iS8TfRPfVpKo5FVfSUzfHBQxo9KuzpnqLU": "tBTC.vETH",
+    "i9oCSqKALwJtcv49xUKS2U2i79h1kX6NEY": "vUSDT.vETH",
+    "i61cV2uicKSi1rSMQCBNQeSYC3UAi9GVzd": "vUSDC.vETH",
+    "iC5TQFrFXSYLQGkiZ8FYmZHFJzaRF5CYgE": "EURC.vETH",
+    "iS3NjE3XRYWoHRoovpLhFnbDraCq7NFStf": "vwBTC.vETH",
+    "i9nLSK4S1U5sVMq4eJUHR1gbFALz56J9Lj": "scrvUSD.vETH",
+    "iL62spNN42Vqdxh8H5nrfNe8d6Amsnfkdx": "NATI.vETH",
+    "i7ekXxHYzXW7uAfu5BtWZhd1MjXcWU5Rn3": "bitcoins",
+    "i5VVBEi6efBrXMaeqFW3MTPSzbmpNLysGR": "pepecoin.vETH",
+    "iExBJfZYK7KREDpuhj6PzZBzqMAKaFg7d2": "vARRR",
+    "iHog9UCTrn95qpUBFCZ7kKz7qWdMA8MQ6N": "vDEX",
+    "iJ3WZocnjG9ufv7GKUA4LijQno5gTMb7tP": "CHIPS",
+    "i6SapneNdvpkrLPgqPhDVim7Ljek3h2UQZ": "SUPERNET",
+    "iH37kRsdfoHtHK5TottP1Yfq8hBSHz9btw": "NATI\ud83e\udd89",
+    "iFrFn9b6ctse7XBzcWkRbpYMAHoKjbYKqG": "SUPER\ud83d\uded2",
+    "iHax5qYQGbcMGqJKKrPorpzUBX2oFFXGnY": "Pure",
+    "i8Rar9Z64hDXtpBRJBhK9b6S6dMV1EttiS": "VerusIDX",
+    "iHnYAmrS45Hb8GVgyzy7nVQtZ5vttJ9N3X": "SUPERVRSC",
+    "iH9HFQeKRNVWguokGLLaiVYqy9u8VuFWMe": "Agents",
+    "iRt7tpLewArQnRddBVFARGKJStK6w5pDmC": "NATI",
+    "i4Xr5TAMrDTD99H69EemhjDxJ4ktNskUtc": "Switch",
+    "iAik7rePReFq2t7LZMZhHCJ52fT5pisJ5C": "vYIELD",
+    "i9kVWKU2VwARALpbXn4RS9zvrhvNRaUibb": "Kaiju",
+    "iMBAiZzWSYRmABmiXjxsJju7Rusai2WPUf": "Trillium",
+    "iKaSEU4KPrKahpemwHLoQVLPUof6fSE1uk": "\u24b6",
+    "iGwDA89H2BDCEStTPqhFyLzYteVHVs7tcJ": "\ud83d\udfe0",
+    "i3d4vSCbXYEC3u6TzwohMvdghHkhBrXWpE": "Floralis",
+    "i3nokiCTVevZMLpR3VmZ7YDfCqA5juUqqH": "Bridge.CHIPS",
+    "i6j1rzjgrDhSmUYiTtp21J8Msiudv5hgt9": "Bridge.vDEX",
+    "iD5WRg7jdQM1uuoVHsBCAEKfJCKGs1U3TB": "Bridge.vARRR"
+  },
+  "baskets": {
+    "Bridge.vETH": {
+      "id": "i3f7tSctFkiPpiedY8QR5Tep9p4qDVebDx",
+      "reserves": ["VRSC", "DAI.vETH", "MKR.vETH", "vETH"]
+    },
+    "NATI\ud83e\udd89": {
+      "id": "iH37kRsdfoHtHK5TottP1Yfq8hBSHz9btw",
+      "reserves": ["VRSC", "tBTC.vETH", "vETH", "NATI.vETH"]
+    },
+    "SUPER\ud83d\uded2": {
+      "id": "iFrFn9b6ctse7XBzcWkRbpYMAHoKjbYKqG",
+      "reserves": ["SUPERNET", "VRSC", "tBTC.vETH", "vETH", "vARRR", "vDEX", "CHIPS", "scrvUSD.vETH"]
+    },
+    "Pure": {
+      "id": "iHax5qYQGbcMGqJKKrPorpzUBX2oFFXGnY",
+      "reserves": ["VRSC", "tBTC.vETH"]
+    },
+    "VerusIDX": {
+      "id": "i8Rar9Z64hDXtpBRJBhK9b6S6dMV1EttiS",
+      "reserves": ["VRSC", "vUSDC.vETH"]
+    },
+    "SUPERVRSC": {
+      "id": "iHnYAmrS45Hb8GVgyzy7nVQtZ5vttJ9N3X",
+      "reserves": ["VRSC", "SUPERNET"]
+    },
+    "Agents": {
+      "id": "iH9HFQeKRNVWguokGLLaiVYqy9u8VuFWMe",
+      "reserves": ["VRSC", "vUSDT.vETH", "vUSDC.vETH"]
+    },
+    "NATI": {
+      "id": "iRt7tpLewArQnRddBVFARGKJStK6w5pDmC",
+      "reserves": ["VRSC", "NATI.vETH"]
+    },
+    "Switch": {
+      "id": "i4Xr5TAMrDTD99H69EemhjDxJ4ktNskUtc",
+      "reserves": ["VRSC", "DAI.vETH", "vUSDC.vETH", "EURC.vETH"]
+    },
+    "vYIELD": {
+      "id": "iAik7rePReFq2t7LZMZhHCJ52fT5pisJ5C",
+      "reserves": ["VRSC", "scrvUSD.vETH"]
+    },
+    "Kaiju": {
+      "id": "i9kVWKU2VwARALpbXn4RS9zvrhvNRaUibb",
+      "reserves": ["VRSC", "vUSDT.vETH", "vETH", "tBTC.vETH"]
+    },
+    "Trillium": {
+      "id": "iMBAiZzWSYRmABmiXjxsJju7Rusai2WPUf",
+      "reserves": ["VRSC", "tBTC.vETH", "scrvUSD.vETH"]
+    },
+    "\u24b6": {
+      "id": "iKaSEU4KPrKahpemwHLoQVLPUof6fSE1uk",
+      "reserves": ["VRSC", "NATI\ud83e\udd89", "Pure", "SUPER\ud83d\uded2", "Kaiju", "Bridge.vDEX", "Bridge.vARRR", "Bridge.CHIPS", "Trillium"]
+    },
+    "\ud83d\udfe0": {
+      "id": "iGwDA89H2BDCEStTPqhFyLzYteVHVs7tcJ",
+      "reserves": ["VRSC", "bitcoins", "DAI.vETH"]
+    },
+    "Floralis": {
+      "id": "i3d4vSCbXYEC3u6TzwohMvdghHkhBrXWpE",
+      "reserves": ["VRSC", "tBTC.vETH", "vETH", "DAI.vETH", "vUSDT.vETH", "vUSDC.vETH", "EURC.vETH", "scrvUSD.vETH"]
+    }
+  }
+}

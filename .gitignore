@@ -1,0 +1,28 @@
+node_modules
+dist
+
+# Secrets — never commit
+.env
+.env.*
+*.env
+*.conf
+*.key
+*.pem
+*.wif
+*.seed
+*.mnemonic
+*.privkey
+wallet.dat
+*.wallet
+id_rsa*
+id_ed25519*
+*credentials*
+*secret*
+.secrets/
+
+# OS / editor / build cruft
+.DS_Store
+*.swp
+*.log
+src-backup-*
+nul

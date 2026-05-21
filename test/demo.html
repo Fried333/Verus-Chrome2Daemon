@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Verus Web Wallet - Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f6f8fa; color: #1f2328; padding: 20px; max-width: 800px; margin: 0 auto; }
+    h1 { color: #1f2328; margin-bottom: 4px; }
+    .subtitle { color: #656d76; margin-bottom: 20px; font-size: 14px; }
+    h2 { color: #1f2328; margin: 20px 0 10px; font-size: 16px; border-bottom: 1px solid #d0d7de; padding-bottom: 6px; }
+    .status { padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+    .status.ok { background: #dafbe1; border: 1px solid #82e596; color: #116329; }
+    .status.err { background: #ffebe9; border: 1px solid #ff8182; color: #cf222e; }
+    .status.wait { background: #fff8c5; border: 1px solid #d4a72c; color: #7d4e00; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    button { background: #f6f8fa; border: 1px solid #d0d7de; color: #1f2328; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: 0.15s; }
+    button:hover { background: #eaeef2; border-color: #8b949e; }
+    button.primary { background: #2da44e; border-color: #2da44e; color: white; }
+    button.primary:hover { background: #218838; }
+    button.danger { background: #cf222e; border-color: #cf222e; color: white; }
+    button.danger:hover { background: #a40e26; }
+    input, select { background: #ffffff; border: 1px solid #d0d7de; color: #1f2328; padding: 8px 10px; border-radius: 6px; font-size: 13px; width: 100%; margin-bottom: 8px; }
+    label { display: block; font-size: 11px; color: #656d76; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+    pre { background: #ffffff; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px; font-size: 12px; overflow-x: auto; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; margin-bottom: 10px; }
+    .section { background: #ffffff; border: 1px solid #d0d7de; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+    .log-entry { padding: 4px 0; border-bottom: 1px solid #eaeef2; font-size: 12px; font-family: monospace; }
+    .log-entry.success { color: #116329; }
+    .log-entry.error { color: #cf222e; }
+    .log-entry.info { color: #0969da; }
+  </style>
+</head>
+<body>
+
+<h1>Verus Web Wallet Demo</h1>
+<p class="subtitle">Test all extension features. Open the side panel first.</p>
+
+<div id="detect" class="status wait">Checking for extension...</div>
+
+<!-- Read-Only Tests -->
+<h2>Read-Only (requires unlock)</h2>
+<div class="grid">
+  <button onclick="test('getInfo')">getInfo</button>
+  <button onclick="test('getBlock')">getBlock</button>
+  <button onclick="testWithParams('getBalance')">getBalance</button>
+  <button onclick="testWithParams('getAddress')">getAddress</button>
+  <button onclick="testIdentity()">getIdentity</button>
+  <button onclick="testCurrency()">getCurrency</button>
+</div>
+
+<!-- Send Test -->
+<h2>Send Currency (requires unlock + password)</h2>
+<div class="section">
+  <label>To Address / VerusID</label>
+  <input id="sendTo" type="text" placeholder="R-address, i-address, or name@" />
+  <div style="display:flex;gap:8px">
+    <div style="flex:1"><label>Amount</label><input id="sendAmount" type="text" placeholder="0.001" /></div>
+    <div style="width:100px"><label>Currency</label><input id="sendCurrency" type="text" value="VRSC" /></div>
+  </div>
+  <label>Convert To (optional)</label>
+  <input id="sendConvertTo" type="text" placeholder="e.g. Bridge.vETH" />
+  <label>Via (optional)</label>
+  <input id="sendVia" type="text" placeholder="e.g. Floralis" />
+  <button class="danger" onclick="testSend()">Send (will prompt for approval)</button>
+</div>
+
+<!-- Sign Message Test -->
+<h2>Sign Message (requires unlock + password)</h2>
+<div class="section">
+  <label>Message</label>
+  <input id="signMsg" type="text" placeholder="Hello, Verus!" />
+  <label>Identity (optional)</label>
+  <input id="signIdentity" type="text" placeholder="Leave blank for connected address" />
+  <button onclick="testSign()">Sign Message</button>
+</div>
+
+<!-- Conversion Estimate -->
+<h2>Estimate Conversion</h2>
+<div class="section">
+  <div style="display:flex;gap:8px">
+    <div style="flex:1"><label>From</label><input id="convFrom" type="text" value="VRSC" /></div>
+    <div style="flex:1"><label>To</label><input id="convTo" type="text" value="Bridge.vETH" /></div>
+    <div style="width:100px"><label>Amount</label><input id="convAmount" type="text" value="10" /></div>
+  </div>
+  <label>Via (optional)</label>
+  <input id="convVia" type="text" placeholder="e.g. Bridge.vETH" />
+  <button onclick="testConversion()">Estimate</button>
+</div>
+
+<!-- VerusID Login Test -->
+<h2>VerusID Login</h2>
+<div class="section">
+  <label>Deep Link URI</label>
+  <input id="loginUri" type="text" placeholder="verus://..." style="font-size:11px" />
+  <p style="font-size:11px;color:#8b949e;margin-bottom:8px">Get one from: <code>curl -s -X POST https://example.com/api/auth/verus/challenge</code></p>
+  <button class="primary" onclick="testLogin()">Request Login</button>
+</div>
+
+<!-- Results Log -->
+<h2>Results</h2>
+<div id="log"></div>
+
+<script>
+function log(msg, type) {
+  const el = document.getElementById('log');
+  const entry = document.createElement('div');
+  entry.className = 'log-entry ' + (type || 'info');
+  const time = new Date().toLocaleTimeString();
+  if (typeof msg === 'object') msg = JSON.stringify(msg, null, 2);
+  entry.textContent = `[${time}] ${msg}`;
+  el.prepend(entry);
+}
+
+// Detect extension
+window.addEventListener('verus#initialized', function() {
+  document.getElementById('detect').className = 'status ok';
+  document.getElementById('detect').textContent = 'Extension detected! window.verus v' + window.verus.version;
+  log('Extension detected', 'success');
+});
+
+setTimeout(function() {
+  if (window.verus) {
+    document.getElementById('detect').className = 'status ok';
+    document.getElementById('detect').textContent = 'Extension detected! window.verus v' + window.verus.version;
+  } else {
+    document.getElementById('detect').className = 'status err';
+    document.getElementById('detect').textContent = 'Extension NOT detected. Make sure it is installed and this page is reloaded.';
+  }
+}, 1500);
+
+async function test(method) {
+  log(`Calling ${method}()...`);
+  try {
+    const result = await window.verus[method]();
+    log(`${method} success: ${JSON.stringify(result)}`, 'success');
+  } catch (err) {
+    log(`${method} error: ${err.message}`, 'error');
+  }
+}
+
+async function testWithParams(method) {
+  log(`Calling ${method}()...`);
+  try {
+    const result = await window.verus[method]();
+    log(`${method} success: ${JSON.stringify(result)}`, 'success');
+  } catch (err) {
+    log(`${method} error: ${err.message}`, 'error');
+  }
+}
+
+async function testIdentity() {
+  const name = prompt('Enter VerusID name or i-address:', 'user2.example@');
+  if (!name) return;
+  log(`Calling getIdentity("${name}")...`);
+  try {
+    const result = await window.verus.getIdentity(name);
+    log(`getIdentity success: ${JSON.stringify(result).slice(0, 500)}`, 'success');
+  } catch (err) {
+    log(`getIdentity error: ${err.message}`, 'error');
+  }
+}
+
+async function testCurrency() {
+  const name = prompt('Enter currency name:', 'Bridge.vETH');
+  if (!name) return;
+  log(`Calling getCurrency is not exposed... using getIdentity as proxy`);
+  // getCurrency isn't on window.verus, test via getInfo
+  log('Note: getCurrency not yet exposed on window.verus API', 'info');
+}
+
+async function testSend() {
+  const to = document.getElementById('sendTo').value.trim();
+  const amount = parseFloat(document.getElementById('sendAmount').value);
+  const currency = document.getElementById('sendCurrency').value.trim() || undefined;
+  const convertto = document.getElementById('sendConvertTo').value.trim() || undefined;
+  const via = document.getElementById('sendVia').value.trim() || undefined;
+
+  if (!to || !amount) { log('Enter a recipient and amount', 'error'); return; }
+  log(`Calling send({ to: "${to}", amount: ${amount}, currency: "${currency || 'VRSC'}" })...`);
+  try {
+    const result = await window.verus.send({ to, amount, currency, convertto, via });
+    log(`send success: ${JSON.stringify(result)}`, 'success');
+  } catch (err) {
+    log(`send error: ${err.message}`, 'error');
+  }
+}
+
+async function testSign() {
+  const message = document.getElementById('signMsg').value.trim();
+  const identity = document.getElementById('signIdentity').value.trim() || undefined;
+  if (!message) { log('Enter a message to sign', 'error'); return; }
+  log(`Calling signMessage("${message}")...`);
+  try {
+    const result = await window.verus.signMessage({ message, identity });
+    log(`signMessage success: ${JSON.stringify(result)}`, 'success');
+  } catch (err) {
+    log(`signMessage error: ${err.message}`, 'error');
+  }
+}
+
+async function testConversion() {
+  const from = document.getElementById('convFrom').value.trim();
+  const to = document.getElementById('convTo').value.trim();
+  const amount = parseFloat(document.getElementById('convAmount').value);
+  const via = document.getElementById('convVia').value.trim() || undefined;
+  if (!from || !to || !amount) { log('Fill in from, to, and amount', 'error'); return; }
+  log(`Calling estimateConversion({ from: "${from}", to: "${to}", amount: ${amount} })...`);
+  try {
+    const result = await window.verus.estimateConversion({ from, to, amount, via });
+    log(`estimateConversion success: ${JSON.stringify(result)}`, 'success');
+  } catch (err) {
+    log(`estimateConversion error: ${err.message}`, 'error');
+  }
+}
+
+async function testLogin() {
+  const uri = document.getElementById('loginUri').value.trim();
+  if (!uri) { log('Paste a verus:// deep link URI first', 'error'); return; }
+  log(`Calling requestLogin(${uri.slice(0, 50)}...)...`);
+  try {
+    const result = await window.verus.requestLogin(uri);
+    log(`requestLogin success: ${JSON.stringify(result)}`, 'success');
+  } catch (err) {
+    log(`requestLogin error: ${err.message}`, 'error');
+  }
+}
+</script>
+</body>
+</html>

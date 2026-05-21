@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Verus Wallet - Activity Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f6f8fa; color: #1f2328; padding: 20px; max-width: 420px; margin: 0 auto; }
+    h1 { font-size: 18px; margin-bottom: 4px; }
+    .subtitle { color: #656d76; font-size: 13px; margin-bottom: 16px; }
+    .addr { font-size: 11px; font-family: monospace; color: #656d76; background: #eaeef2; padding: 6px 10px; border-radius: 6px; margin-bottom: 12px; word-break: break-all; }
+    .activity-list { display: flex; flex-direction: column; gap: 2px; }
+    .tx-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: #fff; border: 1px solid #d0d7de; border-radius: 8px; }
+    .tx-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .tx-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: white; flex-shrink: 0; }
+    .tx-icon.send { background: #cf222e; }
+    .tx-icon.receive { background: #116329; }
+    .tx-icon.swap-out { background: #8250df; }
+    .tx-icon.swap-in { background: #0969da; }
+    .tx-info { min-width: 0; }
+    .tx-type { font-size: 13px; font-weight: 600; }
+    .tx-type.send { color: #cf222e; }
+    .tx-type.receive { color: #116329; }
+    .tx-type.swap-out { color: #8250df; }
+    .tx-type.swap-in { color: #0969da; }
+    .tx-addr { font-size: 10px; font-family: monospace; color: #656d76; }
+    .tx-time { font-size: 10px; color: #8b949e; }
+    .tx-right { text-align: right; flex-shrink: 0; }
+    .tx-amount { font-size: 12px; font-family: monospace; font-weight: 500; }
+    .tx-amount.pos { color: #116329; }
+    .tx-amount.neg { color: #cf222e; }
+    .tx-status { font-size: 9px; padding: 1px 5px; border-radius: 3px; }
+    .tx-status.confirmed { background: #dafbe1; color: #116329; }
+    .tx-status.pending { background: #fff8c5; color: #7d4e00; }
+  </style>
+</head>
+<body>
+<h1>Activity Demo</h1>
+<p class="subtitle">Sent / Received / Swap Out / Swap In</p>
+<div class="addr">RKirfTNWEM2BFzpgSVCkScoj79W3EjjgHL</div>
+<div id="list" class="activity-list"></div>
+<script>
+var TXS = [{"txid": "74086469ebee0575bbb1dae8b192b8759f491e93ba048e2746c71970f0d22b8b", "type": "swap-in", "value": 0.0, "otherAddr": "RKLN7wFhbrJFkPG8XkKteErAe5CjqoddTm", "confirmations": 12, "time": 1774572075, "currencyTransfers": [{"currency": "vETH", "amount": 0.00035846}]}, {"txid": "0ea0f99389ceda5b8d441c5624363f1d116b605ae3acd35db15c6bfebd5bc6e4", "type": "swap-out", "value": -1.0002001, "otherAddr": "RTqQe58LSj2yr5CrwYFwcsAQ1edQwmrkUU", "confirmations": 14, "time": 1774572047, "currencyTransfers": []}, {"txid": "0b0eb5aa0ecbe64886bf3cf27e244de102636b989c37990360cf79ce507f5be5", "type": "receive", "value": 0.11, "otherAddr": "RAhD9vgrWZ3ALkq541xdqL2oLYEvsLNrzn", "confirmations": 20, "time": 1774571724, "currencyTransfers": []}, {"txid": "1ae2dbbce98c02266bbecf9fb10a7e77919f45e5c38e9285e9f98a4caf09643b", "type": "receive", "value": 0.01, "otherAddr": "RAhD9vgrWZ3ALkq541xdqL2oLYEvsLNrzn", "confirmations": 782, "time": 1774524993, "currencyTransfers": []}, {"txid": "4e3853eb5841103018d29dc18b024e73fbde225e21a5f4218f0deb2e9422edb1", "type": "receive", "value": 0.12, "otherAddr": "RAhD9vgrWZ3ALkq541xdqL2oLYEvsLNrzn", "confirmations": 782, "time": 1774524993, "currencyTransfers": []}, {"txid": "f8ecb1ff5cb9eafb0feb188662d24c9c32b67ea543254fd70819a0c13d2ee01c", "type": "receive", "value": 0.1, "otherAddr": "RAhD9vgrWZ3ALkq541xdqL2oLYEvsLNrzn", "confirmations": 796, "time": 1774523728, "currencyTransfers": []}, {"txid": "d1f17f842f6093a67c1d70eb7f1f4538ed67d6af7b59063c6b91502ed4af5905", "type": "receive", "value": 1.7488, "otherAddr": "", "confirmations": 1448, "time": 1774482887, "currencyTransfers": []}, {"txid": "89df78325aa933bf05dd96b991a91206a165be25e33fe6c9aab92a19b365c7e6", "type": "receive", "value": 0.0, "otherAddr": "RDrHN9mSymXERxxpr1c1Wp7Y1vYU7qZ8VA", "confirmations": 1452, "time": 1774482759, "currencyTransfers": [{"currency": "bitcoins", "amount": 170.0}]}, {"txid": "f83dd9c380033294fa2f43dd97a9115efed53a6592ad85ae922ac76e3a1f827b", "type": "receive", "value": 63.22521632, "otherAddr": "RUYUzHUHAPrtYTmXGfgxS6PEinQLag6ziM", "confirmations": 1452, "time": 1774482759, "currencyTransfers": []}, {"txid": "237b4315a2907b7b2f6806c31aeab78574ab41f4649541de25bd603cb8b8ee06", "type": "receive", "value": 0.0, "otherAddr": "RUYUzHUHAPrtYTmXGfgxS6PEinQLag6ziM", "confirmations": 1455, "time": 1774482631, "currencyTransfers": [{"currency": "Bridge", "amount": 0.00359567}]}, {"txid": "5e8f1d4993de191b26b115ee1520b4d2f0bc5d98d63634275865eb17270b7f4a", "type": "receive", "value": 0.0, "otherAddr": "RDrHN9mSymXERxxpr1c1Wp7Y1vYU7qZ8VA", "confirmations": 1455, "time": 1774482631, "currencyTransfers": [{"currency": "vETH", "amount": 0.0001423}]}, {"txid": "4f1e28319b6bfb78b1dbd45700c5967ba16b3d96bbf2e67fd6d530442d6d1e38", "type": "receive", "value": 0.0, "otherAddr": "RUYUzHUHAPrtYTmXGfgxS6PEinQLag6ziM", "confirmations": 1461, "time": 1774482264, "currencyTransfers": [{"currency": "bitcoins", "amount": 295.6274914}]}, {"txid": "edbec1048e335d8e4c86f812aee44e79fc5be6f7bb8c5bbfa2a419bb1305ff9d", "type": "receive", "value": 0.0, "otherAddr": "RUYUzHUHAPrtYTmXGfgxS6PEinQLag6ziM", "confirmations": 1462, "time": 1774482249, "currencyTransfers": [{"currency": "vETH", "amount": 0.00183594}]}, {"txid": "106c30f2619bd0959235305f0791b76c8413524591cf574510c8e7acb5fa8b97", "type": "receive", "value": 0.0, "otherAddr": "RUYUzHUHAPrtYTmXGfgxS6PEinQLag6ziM", "confirmations": 1463, "time": 1774482190, "currencyTransfers": [{"currency": "tBTC", "amount": 2.72e-06}]}, {"txid": "b7c920d958f01663331c966abdb8ea4bf30eabe682d2f25290a3529e653e2cf2", "type": "send", "value": -0.0109, "otherAddr": "i81aJNSw1bx7eBzPhrooKqecWoave1yguu", "confirmations": 5495, "time": 1774232712, "currencyTransfers": []}, {"txid": "b03dcf09f92fb1315be62488234186d447c0464f942523b56c170a285d2ae7ee", "type": "swap-out", "value": -0.0002, "otherAddr": "i81aJNSw1bx7eBzPhrooKqecWoave1yguu", "confirmations": 5508, "time": 1774232007, "currencyTransfers": [{"currency": "bitcoins", "amount": -1.0}]}, {"txid": "9a007fdb713ab6c8e0e5dc0b48f6024f1b4b82855d7e0e5430aeb53d96612793", "type": "receive", "value": 0.01, "otherAddr": "", "confirmations": 5517, "time": 1774231400, "currencyTransfers": []}, {"txid": "390ef02ffc8c80747138d007e162a5715555079f38eae0abfdf3939f9663124f", "type": "send", "value": -1.0, "otherAddr": "RJ4BY2DGVpmC4FpDAbhQN32nEmTyAokfh4", "confirmations": 5760, "time": 1774216121, "currencyTransfers": []}, {"txid": "7f127c4229fba0d4437317831bb690dcfa1f29d817a5a3a8e2040915a12fe630", "type": "send", "value": -1.0, "otherAddr": "RB9WVUGs3qqkLuoDrgTMY76aGLxLdSsV2s", "confirmations": 5760, "time": 1774216121, "currencyTransfers": []}, {"txid": "fb150fbea209c37512678846b0d80040bc758419fae8c3d79940ce6c072e4b38", "type": "receive", "value": 0.001, "otherAddr": "RRWLuqqxANRPpiNpmpohPffhCMxTzDL75K", "confirmations": 6192, "time": 1774190044, "currencyTransfers": []}];
+var TYPE_MAP = {
+  'send':     { label: 'Sent',     icon: 'OUT', cls: 'send' },
+  'receive':  { label: 'Received', icon: 'IN',  cls: 'receive' },
+  'swap-out': { label: 'Swap Out', icon: 'S/O', cls: 'swap-out' },
+  'swap-in':  { label: 'Swap In',  icon: 'S/I', cls: 'swap-in' },
+};
+document.getElementById('list').innerHTML = TXS.map(function(tx) {
+  var t = TYPE_MAP[tx.type] || { label: tx.type, icon: '?', cls: '' };
+  var time = tx.time ? new Date(tx.time * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+  var confirmed = tx.confirmations > 0;
+  var addr = tx.otherAddr ? tx.otherAddr.slice(0,8) + '...' + tx.otherAddr.slice(-6) : '';
+  var amounts = '';
+  tx.currencyTransfers.forEach(function(ct) {
+    var cls = ct.amount >= 0 ? 'pos' : 'neg';
+    var sign = ct.amount >= 0 ? '+' : '';
+    amounts += '<div class="tx-amount ' + cls + '">' + sign + ct.amount.toFixed(8) + ' ' + ct.currency + '</div>';
+  });
+  if (tx.value !== 0) {
+    var cls2 = tx.value >= 0 ? 'pos' : 'neg';
+    var sign2 = tx.value >= 0 ? '+' : '';
+    amounts += '<div class="tx-amount ' + cls2 + '">' + sign2 + tx.value.toFixed(8) + ' VRSC</div>';
+  }
+  if (!amounts) amounts = '<div class="tx-amount" style="color:#8b949e">0 VRSC</div>';
+  return '<div class="tx-item"><div class="tx-left"><div class="tx-icon ' + t.cls + '">' + t.icon + '</div><div class="tx-info"><div class="tx-type ' + t.cls + '">' + t.label + '</div>' + (addr ? '<div class="tx-addr">' + addr + '</div>' : '') + '<div class="tx-time">' + time + ' <span class="tx-status ' + (confirmed ? 'confirmed' : 'pending') + '">' + (confirmed ? 'Confirmed' : 'Pending') + '</span></div></div></div><div class="tx-right">' + amounts + '</div></div>';
+}).join('');
+</script>
+</body>
+</html>

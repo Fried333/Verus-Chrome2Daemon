@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Verus Wallet - Layout Mockup v2</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #e5e7eb; display: flex; justify-content: center; gap: 20px; padding: 20px; flex-wrap: wrap; }
+
+    .phone { width: 380px; height: 700px; background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.15); display: flex; flex-direction: column; }
+    .phone-label { text-align: center; font-size: 12px; color: #656d76; margin-bottom: 6px; font-weight: 600; }
+
+    .header { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eaeef2; flex-shrink: 0; }
+    .header-left { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .avatar { width: 28px; height: 28px; border-radius: 50%; background: #2563eb; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 700; }
+    .account-name { font-size: 13px; font-weight: 600; color: #1f2328; }
+    .account-arrow { font-size: 10px; color: #8b949e; }
+    .icon-btn { width: 28px; height: 28px; border-radius: 6px; background: #f6f8fa; border: 1px solid #d0d7de; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; }
+
+    .balance-card { padding: 20px 16px; text-align: center; background: linear-gradient(135deg, #1e3a5f 0%, #0d1117 100%); color: white; }
+    .balance-label { font-size: 11px; opacity: 0.7; margin-bottom: 4px; }
+    .balance-amount { font-size: 28px; font-weight: 700; font-family: monospace; }
+    .balance-sub { font-size: 11px; opacity: 0.5; margin-top: 4px; }
+    .address-pill { display: inline-block; font-size: 10px; font-family: monospace; background: rgba(255,255,255,0.15); padding: 3px 10px; border-radius: 12px; margin-top: 8px; cursor: pointer; }
+
+    .actions { display: flex; gap: 8px; padding: 12px 16px; }
+    .action-btn { flex: 1; padding: 10px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .action-btn.primary { background: #2563eb; color: white; }
+    .action-btn.secondary { background: #f6f8fa; color: #1f2328; border: 1px solid #d0d7de; }
+
+    /* Sub tabs within wallet */
+    .sub-tabs { display: flex; border-bottom: 2px solid #eaeef2; padding: 0 16px; flex-shrink: 0; }
+    .sub-tab { padding: 10px 16px; font-size: 13px; font-weight: 600; color: #8b949e; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+    .sub-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+
+    .content { flex: 1; overflow-y: auto; }
+
+    /* Bottom nav - 3 items */
+    .bottom-nav { display: flex; border-top: 1px solid #eaeef2; flex-shrink: 0; background: #fff; }
+    .nav-item { flex: 1; padding: 10px 0 8px; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; border: none; background: none; color: #8b949e; font-size: 10px; font-weight: 500; }
+    .nav-item.active { color: #2563eb; }
+    .nav-icon { font-size: 20px; line-height: 1; }
+
+    /* Currency list */
+    .curr-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f0f2f5; cursor: pointer; }
+    .curr-item:hover { background: #f6f8fa; }
+    .curr-left { display: flex; align-items: center; gap: 10px; }
+    .curr-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: white; }
+    .curr-name { font-size: 14px; font-weight: 600; color: #1f2328; }
+    .curr-sub { font-size: 11px; color: #8b949e; }
+    .curr-amount { font-size: 14px; font-weight: 600; font-family: monospace; color: #1f2328; text-align: right; }
+
+    /* Activity */
+    .tx-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f0f2f5; cursor: pointer; }
+    .tx-item:hover { background: #f6f8fa; }
+    .tx-left { display: flex; align-items: center; gap: 10px; }
+    .tx-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: white; flex-shrink: 0; }
+    .tx-info { min-width: 0; }
+    .tx-type { font-size: 13px; font-weight: 600; }
+    .tx-addr { font-size: 10px; font-family: monospace; color: #8b949e; }
+    .tx-time { font-size: 10px; color: #8b949e; }
+    .tx-amounts { text-align: right; flex-shrink: 0; }
+    .tx-val { font-size: 13px; font-weight: 600; font-family: monospace; }
+    .tx-val.pos { color: #116329; }
+    .tx-val.neg { color: #cf222e; }
+    .tx-status { font-size: 9px; padding: 1px 5px; border-radius: 3px; background: #dafbe1; color: #116329; }
+    .tx-status.pending { background: #fff8c5; color: #7d4e00; }
+    .date-header { padding: 8px 16px 4px; font-size: 11px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* Swap */
+    .swap-box { margin: 16px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px; padding: 16px; }
+    .swap-label { font-size: 11px; color: #8b949e; margin-bottom: 4px; }
+    .swap-input { display: flex; align-items: center; gap: 8px; }
+    .swap-input input { flex: 1; border: none; background: none; font-size: 24px; font-weight: 600; font-family: monospace; outline: none; color: #1f2328; width: 0; }
+    .swap-currency { padding: 6px 12px; border-radius: 8px; background: #fff; border: 1px solid #d0d7de; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .swap-bal { font-size: 10px; color: #2563eb; margin-top: 4px; cursor: pointer; }
+    .swap-arrow { text-align: center; padding: 4px; font-size: 20px; color: #8b949e; }
+    .swap-info { margin: 0 16px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px; font-size: 12px; color: #656d76; }
+    .swap-info-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .swap-info-row:last-child { margin-bottom: 0; }
+    .swap-info-val { font-weight: 600; color: #1f2328; }
+
+    /* IDs */
+    .id-item { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #f0f2f5; cursor: pointer; }
+    .id-item:hover { background: #f6f8fa; }
+    .id-left { display: flex; align-items: center; gap: 10px; }
+    .id-icon { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #10b981, #059669); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: white; flex-shrink: 0; }
+    .id-name { font-size: 14px; font-weight: 600; color: #1f2328; }
+    .id-addr { font-size: 10px; font-family: monospace; color: #8b949e; }
+    .id-arrow { color: #8b949e; font-size: 14px; }
+    .id-action { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #f0f2f5; cursor: pointer; font-size: 13px; color: #1f2328; }
+    .id-action:hover { background: #f6f8fa; }
+    .id-action-icon { width: 36px; height: 36px; border-radius: 10px; background: #f6f8fa; border: 1px solid #d0d7de; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  </style>
+</head>
+<body>
+
+<!-- WALLET TAB: Currencies sub-tab -->
+<div>
+  <div class="phone-label">Wallet → Currencies</div>
+  <div class="phone">
+    <div class="header">
+      <div class="header-left">
+        <div class="avatar">SF</div>
+        <span class="account-name">Steve's Wallet</span>
+        <span class="account-arrow">▾</span>
+      </div>
+      <div class="icon-btn">⚙</div>
+    </div>
+
+    <div class="balance-card">
+      <div class="balance-label">Total Balance</div>
+      <div class="balance-amount">79.039 VRSC</div>
+      <div class="balance-sub">Block 3,998,200</div>
+      <div class="address-pill">RKirf...jgHL 📋</div>
+    </div>
+
+    <div class="actions">
+      <button class="action-btn primary">↑ Send</button>
+      <button class="action-btn secondary">↓ Receive</button>
+    </div>
+
+    <div class="sub-tabs">
+      <div class="sub-tab active">Currencies</div>
+      <div class="sub-tab">Activity</div>
+    </div>
+
+    <div class="content">
+      <div class="curr-item">
+        <div class="curr-left">
+          <div class="curr-icon" style="background:linear-gradient(135deg,#2563eb,#1d4ed8)">VR</div>
+          <div><div class="curr-name">VRSC</div></div>
+        </div>
+        <div class="curr-amount">79.039</div>
+      </div>
+      <div class="curr-item">
+        <div class="curr-left">
+          <div class="curr-icon" style="background:linear-gradient(135deg,#8b5cf6,#7c3aed)">BI</div>
+          <div><div class="curr-name">bitcoins</div></div>
+        </div>
+        <div class="curr-amount">4,956.227</div>
+      </div>
+      <div class="curr-item">
+        <div class="curr-left">
+          <div class="curr-icon" style="background:linear-gradient(135deg,#6366f1,#4f46e5)">BR</div>
+          <div><div class="curr-name">Bridge.vETH</div></div>
+        </div>
+        <div class="curr-amount">0.075</div>
+      </div>
+      <div class="curr-item">
+        <div class="curr-left">
+          <div class="curr-icon" style="background:linear-gradient(135deg,#0ea5e9,#0284c7)">vE</div>
+          <div><div class="curr-name">vETH</div></div>
+        </div>
+        <div class="curr-amount">0.00274</div>
+      </div>
+      <div class="curr-item">
+        <div class="curr-left">
+          <div class="curr-icon" style="background:linear-gradient(135deg,#f59e0b,#d97706)">tB</div>
+          <div><div class="curr-name">tBTC</div></div>
+        </div>
+        <div class="curr-amount">0.0000027</div>
+      </div>
+    </div>
+
+    <div class="bottom-nav">
+      <div class="nav-item active"><span class="nav-icon">💰</span>Wallet</div>
+      <div class="nav-item"><span class="nav-icon">⇄</span>Swap</div>
+      <div class="nav-item"><span class="nav-icon">🆔</span>IDs</div>
+    </div>
+  </div>
+</div>
+
+<!-- WALLET TAB: Activity sub-tab -->
+<div>
+  <div class="phone-label">Wallet → Activity</div>
+  <div class="phone">
+    <div class="header">
+      <div class="header-left">
+        <div class="avatar">SF</div>
+        <span class="account-name">Steve's Wallet</span>
+        <span class="account-arrow">▾</span>
+      </div>
+      <div class="icon-btn">⚙</div>
+    </div>
+
+    <div class="balance-card">
+      <div class="balance-label">Total Balance</div>
+      <div class="balance-amount">79.039 VRSC</div>
+      <div class="balance-sub">Block 3,998,200</div>
+      <div class="address-pill">RKirf...jgHL 📋</div>
+    </div>
+
+    <div class="actions">
+      <button class="action-btn primary">↑ Send</button>
+      <button class="action-btn secondary">↓ Receive</button>
+    </div>
+
+    <div class="sub-tabs">
+      <div class="sub-tab">Currencies</div>
+      <div class="sub-tab active">Activity</div>
+    </div>
+
+    <div class="content">
+      <div class="date-header">Pending</div>
+      <div class="tx-item">
+        <div class="tx-left">
+          <div class="tx-icon" style="background:#cf222e">OUT</div>
+          <div class="tx-info">
+            <div class="tx-type" style="color:#cf222e">Sent</div>
+            <div class="tx-addr">RMZEii...oEWB</div>
+            <div class="tx-time">Just now <span class="tx-status pending">Pending</span></div>
+          </div>
+        </div>
+        <div class="tx-amounts"><div class="tx-val neg">-0.50 VRSC</div></div>
+      </div>
+
+      <div class="date-header">27 Mar</div>
+      <div class="tx-item">
+        <div class="tx-left">
+          <div class="tx-icon" style="background:#0969da">S/I</div>
+          <div class="tx-info">
+            <div class="tx-type" style="color:#0969da">Swap In</div>
+            <div class="tx-time">27 Mar <span class="tx-status">Confirmed</span></div>
+          </div>
+        </div>
+        <div class="tx-amounts"><div class="tx-val pos">+0.00035 vETH</div></div>
+      </div>
+      <div class="tx-item">
+        <div class="tx-left">
+          <div class="tx-icon" style="background:#8250df">S/O</div>
+          <div class="tx-info">
+            <div class="tx-type" style="color:#8250df">Swap Out</div>
+            <div class="tx-time">27 Mar <span class="tx-status">Confirmed</span></div>
+          </div>
+        </div>
+        <div class="tx-amounts"><div class="tx-val neg">-1.000 VRSC</div></div>
+      </div>
+      <div class="tx-item">
+        <div class="tx-left">
+          <div class="tx-icon" style="background:#116329">IN</div>
+          <div class="tx-info">
+            <div class="tx-type" style="color:#116329">Received</div>
+            <div class="tx-addr">RAhD9v...Nrzn</div>
+            <div class="tx-time">27 Mar <span class="tx-status">Confirmed</span></div>
+          </div>
+        </div>
+        <div class="tx-amounts"><div class="tx-val pos">+0.11 VRSC</div></div>
+      </div>
+
+      <div class="date-header">25 Mar</div>
+      <div class="tx-item">
+        <div class="tx-left">
+          <div class="tx-icon" style="background:#116329">IN</div>
+          <div class="tx-info">
+            <div class="tx-type" style="color:#116329">Received</div>
+            <div class="tx-addr">RDrHN9...Z8VA</div>
+            <div class="tx-time">25 Mar <span class="tx-status">Confirmed</span></div>
+          </div>
+        </div>
+        <div class="tx-amounts"><div class="tx-val pos">+170.00 bitcoins</div></div>
+      </div>
+      <div class="tx-item">
+        <div class="tx-left">
+          <div class="tx-icon" style="background:#116329">IN</div>
+          <div class="tx-info">
+            <div class="tx-type" style="color:#116329">Received</div>
+            <div class="tx-addr">RUYUZ...6ziM</div>
+            <div class="tx-time">25 Mar <span class="tx-status">Confirmed</span></div>
+          </div>
+        </div>
+        <div class="tx-amounts"><div class="tx-val pos">+63.22 VRSC</div></div>
+      </div>
+    </div>
+
+    <div class="bottom-nav">
+      <div class="nav-item active"><span class="nav-icon">💰</span>Wallet</div>
+      <div class="nav-item"><span class="nav-icon">⇄</span>Swap</div>
+      <div class="nav-item"><span class="nav-icon">🆔</span>IDs</div>
+    </div>
+  </div>
+</div>
+
+<!-- SWAP TAB -->
+<div>
+  <div class="phone-label">Swap</div>
+  <div class="phone">
+    <div class="header">
+      <div class="header-left">
+        <div class="avatar">SF</div>
+        <span class="account-name">Steve's Wallet</span>
+        <span class="account-arrow">▾</span>
+      </div>
+      <div class="icon-btn">⚙</div>
+    </div>
+
+    <div class="content" style="padding:0">
+      <div class="swap-box">
+        <div class="swap-label">You send</div>
+        <div class="swap-input">
+          <input value="10.00" />
+          <div class="swap-currency">VRSC ▾</div>
+        </div>
+        <div class="swap-bal">Balance: 79.039 VRSC</div>
+      </div>
+
+      <div class="swap-arrow">↓</div>
+
+      <div class="swap-box">
+        <div class="swap-label">You receive (est.)</div>
+        <div class="swap-input">
+          <input value="≈ 0.00358" style="color:#8b949e" readonly />
+          <div class="swap-currency">vETH ▾</div>
+        </div>
+      </div>
+
+      <div style="padding:16px">
+        <div class="swap-info">
+          <div class="swap-info-row"><span>Via</span><span class="swap-info-val">Bridge.vETH</span></div>
+          <div class="swap-info-row"><span>Rate</span><span>1 VRSC ≈ 0.000358 vETH</span></div>
+          <div class="swap-info-row"><span>Est. fee</span><span>0.025%</span></div>
+        </div>
+      </div>
+
+      <div style="padding:0 16px">
+        <button class="action-btn primary" style="width:100%;border:none;padding:14px;font-size:15px;border-radius:10px;background:#8250df">Review Swap</button>
+      </div>
+    </div>
+
+    <div class="bottom-nav">
+      <div class="nav-item"><span class="nav-icon">💰</span>Wallet</div>
+      <div class="nav-item active"><span class="nav-icon">⇄</span>Swap</div>
+      <div class="nav-item"><span class="nav-icon">🆔</span>IDs</div>
+    </div>
+  </div>
+</div>
+
+<!-- IDs TAB -->
+<div>
+  <div class="phone-label">IDs</div>
+  <div class="phone">
+    <div class="header">
+      <div class="header-left">
+        <div class="avatar">SF</div>
+        <span class="account-name">Steve's Wallet</span>
+        <span class="account-arrow">▾</span>
+      </div>
+      <div class="icon-btn">⚙</div>
+    </div>
+
+    <div class="content">
+      <div class="date-header">Your Identities</div>
+      <div class="id-item">
+        <div class="id-left">
+          <div class="id-icon">ID</div>
+          <div>
+            <div class="id-name">user2.example@</div>
+            <div class="id-addr">iGy7wRED...Y7h847</div>
+          </div>
+        </div>
+        <div class="id-arrow">›</div>
+      </div>
+      <div class="id-item">
+        <div class="id-left">
+          <div class="id-icon">ID</div>
+          <div>
+            <div class="id-name">vault.example@</div>
+            <div class="id-addr">i81aJNSw...1yguu</div>
+          </div>
+        </div>
+        <div class="id-arrow">›</div>
+      </div>
+
+      <div class="date-header" style="margin-top:12px">Actions</div>
+      <div class="id-action">
+        <div class="id-action-icon">✍</div>
+        <div>Sign Message</div>
+      </div>
+      <div class="id-action">
+        <div class="id-action-icon">🔑</div>
+        <div>Login with VerusID</div>
+      </div>
+      <div class="id-action">
+        <div class="id-action-icon">📝</div>
+        <div>Update Identity</div>
+      </div>
+      <div class="id-action">
+        <div class="id-action-icon">🆕</div>
+        <div>Register Sub-ID</div>
+      </div>
+    </div>
+
+    <div class="bottom-nav">
+      <div class="nav-item"><span class="nav-icon">💰</span>Wallet</div>
+      <div class="nav-item"><span class="nav-icon">⇄</span>Swap</div>
+      <div class="nav-item active"><span class="nav-icon">🆔</span>IDs</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
