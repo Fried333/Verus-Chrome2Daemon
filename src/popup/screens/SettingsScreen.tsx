@@ -59,6 +59,24 @@ export function SettingsScreen({ address, onBack, onLock, onReconfigure }: Props
     chrome.runtime.sendMessage({ type: 'DELETE_CHAIN', key }, () => loadChains());
   }
 
+  const [refreshingCurrencies, setRefreshingCurrencies] = useState(false);
+  const [refreshMsg, setRefreshMsg] = useState('');
+  function refreshCurrencies() {
+    if (!activeChain) return;
+    setRefreshingCurrencies(true);
+    setRefreshMsg('');
+    chrome.runtime.sendMessage({ type: 'REFRESH_CURRENCY_CACHE', chainKey: activeChain }, (resp: any) => {
+      setRefreshingCurrencies(false);
+      if (resp?.ok) {
+        const count = resp.currencies ? Object.keys(resp.currencies).length : 0;
+        setRefreshMsg(`Loaded ${count} currencies for ${activeChain}`);
+      } else {
+        setRefreshMsg(resp?.error || 'Refresh failed');
+      }
+      setTimeout(() => setRefreshMsg(''), 4000);
+    });
+  }
+
   const active = activeChain ? chains[activeChain] : null;
 
   function handleTimeoutChange(value: number) {
@@ -101,16 +119,24 @@ export function SettingsScreen({ address, onBack, onLock, onReconfigure }: Props
             <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Port</span><span style={{ fontFamily: 'monospace' }}>{active.port}</span></div>
           </div>
         )}
-        <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
+        <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
           <button className="btn-text" onClick={onReconfigure} style={{ fontSize: 12, padding: 0 }}>
             Add / edit chain →
           </button>
+          {activeChain && (
+            <button className="btn-text" onClick={refreshCurrencies} disabled={refreshingCurrencies} style={{ fontSize: 12, padding: 0 }}>
+              {refreshingCurrencies ? 'Refreshing…' : 'Refresh currencies'}
+            </button>
+          )}
           {activeChain && (
             <button className="btn-text" onClick={() => removeChain(activeChain)} style={{ fontSize: 12, padding: 0, color: 'var(--error)' }}>
               Remove {activeChain}
             </button>
           )}
         </div>
+        {refreshMsg && (
+          <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 6 }}>{refreshMsg}</div>
+        )}
       </div>
 
       <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>

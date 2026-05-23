@@ -14,14 +14,27 @@ function rpc(method: string, params?: any): Promise<any> {
   });
 }
 
-const currencies = currencyMap.currencies as Record<string, string>;
-const baskets = currencyMap.baskets as Record<string, { id: string; reserves: string[] }>;
+// Catalog shape we pass around the screen. Source is the active chain's
+// runtime listcurrencies (via the LIST_CURRENCIES handler). The static
+// currency-map.json is used as a fallback only — it ships with the
+// extension so the screen renders something on first activation before
+// the cache populates.
+type Catalog = {
+  currencies: Record<string, string>;
+  baskets: Record<string, { id: string; reserves: string[] }>;
+};
 
-function nameToId(name: string): string | undefined {
-  return Object.entries(currencies).find(([, n]) => n === name)?.[0];
+const STATIC_CATALOG: Catalog = {
+  currencies: currencyMap.currencies as Record<string, string>,
+  baskets: currencyMap.baskets as Record<string, { id: string; reserves: string[] }>,
+};
+
+function nameToId(name: string, cat: Catalog): string | undefined {
+  return Object.entries(cat.currencies).find(([, n]) => n === name)?.[0];
 }
 
-function findBaskets(from: string, to: string): { name: string; id: string; direct: boolean }[] {
+function findBaskets(from: string, to: string, cat: Catalog): { name: string; id: string; direct: boolean }[] {
+  const { baskets } = cat;
   // Direct: "to" is a basket with "from" as reserve (buying basket tokens)
   if (baskets[to] && baskets[to].reserves.includes(from)) {
     return [{ name: to, id: baskets[to].id, direct: true }];
@@ -36,9 +49,9 @@ function findBaskets(from: string, to: string): { name: string; id: string; dire
     .map(([name, b]) => ({ name, id: b.id, direct: false }));
 }
 
-function getSwappableCurrencies(from: string): string[] {
+function getSwappableCurrencies(from: string, cat: Catalog): string[] {
   const targets = new Set<string>();
-  for (const [name, b] of Object.entries(baskets)) {
+  for (const [name, b] of Object.entries(cat.baskets)) {
     // "from" is a reserve of this basket — can swap to other reserves and to the basket itself
     if (b.reserves.includes(from)) {
       for (const r of b.reserves) if (r !== from) targets.add(r);
@@ -75,6 +88,11 @@ export function SwapScreen({ address, defaultFromCurrency, onComplete }: Props) 
   const [step, setStep] = useState<Step>('input');
   const [txid, setTxid] = useState('');
   const [balances, setBalances] = useState<Record<string, number>>({});
+  // Runtime catalog. Starts from the shipped static map so first render
+  // isn't blank, then gets overwritten by the active chain's
+  // listcurrencies result via LIST_CURRENCIES (cache or fresh).
+  const [catalog, setCatalog] = useState<Catalog>(STATIC_CATALOG);
+  const [catalogLoading, setCatalogLoading] = useState(false);
   const quoteId = useRef(0);
 
   useEffect(() => {
@@ -84,6 +102,21 @@ export function SwapScreen({ address, defaultFromCurrency, onComplete }: Props) 
       if (!defaultFromCurrency) setFromCurrency(n);
     });
   }, [defaultFromCurrency]);
+
+  // Fetch the runtime currency catalog for the active chain. Re-runs on
+  // chain switch (via the nativeName change which is set in the first
+  // effect after reading activeChain).
+  useEffect(() => {
+    setCatalogLoading(true);
+    chrome.runtime.sendMessage({ type: 'LIST_CURRENCIES' }, (resp: any) => {
+      setCatalogLoading(false);
+      if (resp?.ok && resp.currencies && resp.baskets) {
+        setCatalog({ currencies: resp.currencies, baskets: resp.baskets });
+      }
+      // On error or unknown chain, leave the static fallback in place so
+      // the screen still renders (degraded but functional).
+    });
+  }, [nativeName]);
 
   // Update from currency when prop changes
   useEffect(() => {
@@ -117,7 +150,7 @@ export function SwapScreen({ address, defaultFromCurrency, onComplete }: Props) 
     return Array.from(held).sort();
   }, [balances, nativeName]);
 
-  const toCurrencies = useMemo(() => getSwappableCurrencies(fromCurrency), [fromCurrency]);
+  const toCurrencies = useMemo(() => getSwappableCurrencies(fromCurrency, catalog), [fromCurrency, catalog]);
 
   // Auto-estimate when inputs change
   useEffect(() => {
@@ -126,11 +159,11 @@ export function SwapScreen({ address, defaultFromCurrency, onComplete }: Props) 
       setEstimates([]);
       return;
     }
-    const fromId = nameToId(fromCurrency);
-    const toId = nameToId(toCurrency);
+    const fromId = nameToId(fromCurrency, catalog);
+    const toId = nameToId(toCurrency, catalog);
     if (!fromId || !toId) return;
 
-    const paths = findBaskets(fromCurrency, toCurrency);
+    const paths = findBaskets(fromCurrency, toCurrency, catalog);
     if (paths.length === 0) { setError('No conversion path found'); return; }
 
     const id = ++quoteId.current;
@@ -174,8 +207,8 @@ export function SwapScreen({ address, defaultFromCurrency, onComplete }: Props) 
     setError('');
     setSending(true);
 
-    const fromId = nameToId(fromCurrency);
-    const toId = nameToId(toCurrency);
+    const fromId = nameToId(fromCurrency, catalog);
+    const toId = nameToId(toCurrency, catalog);
     const params: any = {
       from: address, to: address, amount: parseFloat(amount),
       currency: fromCurrency, convertto: toCurrency,

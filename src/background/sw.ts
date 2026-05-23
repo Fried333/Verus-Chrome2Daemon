@@ -113,6 +113,82 @@ interface KnownIdentity {
   lastSeenAt: number;
 }
 
+// Per-chain currency catalog. Replaces the static VRSC-only currency-map.json
+// for screens that need to know what currencies / baskets are available on
+// the active daemon. Each chain has its own set of reserves + baskets, so
+// shipping a single static catalog would mislead users on PBaaS children.
+interface CurrencyCatalog {
+  currencies: Record<string, string>;                        // iaddr -> friendly name
+  baskets: Record<string, { id: string; reserves: string[] }>; // name -> {iaddr, reserve names}
+  fetchedAt: number;
+}
+
+const CURRENCY_CACHE_TTL_MS = 30 * 60 * 1000;
+
+// Verus consensus flag: a currency with the FRACTIONAL bit set + non-empty
+// `currencies` array is a basket that can be swapped into. Empty-reserve
+// fractional entries are excluded (they're not liquidity baskets).
+const FRACTIONAL_FLAG = 32;
+
+function normalizeListCurrencies(list: any): { currencies: Record<string, string>; baskets: Record<string, { id: string; reserves: string[] }> } {
+  const currencies: Record<string, string> = {};
+  const baskets: Record<string, { id: string; reserves: string[] }> = {};
+  if (!Array.isArray(list)) return { currencies, baskets };
+  // First pass: collect iaddr -> name so basket reserves can be name-mapped.
+  for (const entry of list) {
+    const cd = entry?.currencydefinition || {};
+    const name = cd.name;
+    const iaddr = cd.currencyid;
+    if (typeof name === 'string' && typeof iaddr === 'string') {
+      currencies[iaddr] = name;
+    }
+  }
+  // Second pass: identify baskets and resolve their reserve iaddrs to names.
+  for (const entry of list) {
+    const cd = entry?.currencydefinition || {};
+    const name = cd.name;
+    const iaddr = cd.currencyid;
+    const options = Number(cd.options) || 0;
+    const reserves: string[] = Array.isArray(cd.currencies) ? cd.currencies : [];
+    if (typeof name !== 'string' || typeof iaddr !== 'string') continue;
+    if ((options & FRACTIONAL_FLAG) === 0) continue;
+    if (reserves.length === 0) continue;
+    baskets[name] = {
+      id: iaddr,
+      reserves: reserves.map((r) => currencies[r] || r),
+    };
+  }
+  return { currencies, baskets };
+}
+
+async function getCurrencyCatalog(chainKey: string, forceRefresh: boolean): Promise<CurrencyCatalog> {
+  const data = await chrome.storage.local.get(['chains']);
+  const chains: ChainsMap = data.chains || {};
+  const entry: any = chains[chainKey];
+  if (!entry) throw new Error(`Chain ${chainKey} is not configured`);
+  const cached: CurrencyCatalog | undefined = entry.currencyCache;
+  const now = Date.now();
+  if (!forceRefresh && cached && (now - (cached.fetchedAt || 0)) < CURRENCY_CACHE_TTL_MS) {
+    return cached;
+  }
+  // Issue the listcurrencies call against the requested chain — could be the
+  // active chain or another configured chain (used by Settings refresh).
+  const list = await callRpcOn(chainKey, 'listcurrencies', []);
+  const norm = normalizeListCurrencies(list);
+  const fresh: CurrencyCatalog = { ...norm, fetchedAt: now };
+  // Re-read chains right before writing so a SAVE_CHAIN / DELETE_CHAIN /
+  // SAVE_RPC_CONFIG that landed during the RPC await window isn't reverted
+  // by our stale snapshot. If the chain was deleted while we were fetching,
+  // bail without writing the cache.
+  const fresh2 = await chrome.storage.local.get(['chains']);
+  const liveChains: ChainsMap = fresh2.chains || {};
+  const liveEntry: any = liveChains[chainKey];
+  if (!liveEntry) return fresh;
+  liveChains[chainKey] = { ...liveEntry, currencyCache: fresh };
+  await chrome.storage.local.set({ chains: liveChains });
+  return fresh;
+}
+
 async function upsertKnownIdentities(list: any): Promise<void> {
   if (!Array.isArray(list) || list.length === 0) return;
   const chainKey = await getActiveChainKey();
@@ -1307,6 +1383,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.storage.local.get(['pendingExports'], (data) => {
       sendResponse({ exports: data.pendingExports || {} });
     });
+    return true;
+  }
+
+  if (message.type === 'LIST_CURRENCIES') {
+    // Per-chain currency catalog. Cached into chains[key].currencyCache
+    // with a 30-minute TTL; consumers (SwapScreen) call this on mount and
+    // either get a cached snapshot or trigger a fresh listcurrencies fetch
+    // + normalize step. Forced refresh goes through REFRESH_CURRENCY_CACHE.
+    (async () => {
+      try {
+        const chainKey: string | null = message.chainKey || (await getActiveChainKey());
+        if (!chainKey) { sendResponse({ ok: false, error: 'No active chain' }); return; }
+        const result = await getCurrencyCatalog(chainKey, false);
+        sendResponse({ ok: true, chainKey, ...result });
+      } catch (e: any) {
+        sendResponse({ ok: false, error: e?.message || String(e) });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === 'REFRESH_CURRENCY_CACHE') {
+    (async () => {
+      try {
+        const chainKey: string | null = message.chainKey || (await getActiveChainKey());
+        if (!chainKey) { sendResponse({ ok: false, error: 'No active chain' }); return; }
+        const result = await getCurrencyCatalog(chainKey, true);
+        sendResponse({ ok: true, chainKey, ...result });
+      } catch (e: any) {
+        sendResponse({ ok: false, error: e?.message || String(e) });
+      }
+    })();
     return true;
   }
 
