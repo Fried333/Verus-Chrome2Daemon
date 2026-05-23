@@ -171,6 +171,65 @@ chrome.storage.local.get(['lockTimeout'], (data) => {
 // Open side panel when clicking the extension icon (like MetaMask)
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 
+// Cross-chain export arrivals: alarm fires every 30s while there are pending
+// exports. For each one, we call getidentity on the DESTINATION chain (not
+// the active chain). On a successful resolve we emit EXPORT_RESOLVED so the
+// popup can toast the user, and drop the entry. Alarm survives SW kill;
+// EXPORT_ID re-arms it on each new export.
+async function pollPendingExports(): Promise<void> {
+  const data = await chrome.storage.local.get(['pendingExports']);
+  const map: Record<string, any> = data.pendingExports || {};
+  const keys = Object.keys(map);
+  if (keys.length === 0) {
+    // No work left — cancel the alarm to stop the periodic wakeups.
+    try { await chrome.alarms.clear('exportArrivalPoll'); } catch {}
+    return;
+  }
+  let changed = false;
+  for (const k of keys) {
+    const entry = map[k];
+    try {
+      const resp = await callRpcOn(entry.destChainKey, 'getidentity', [entry.iAddress]);
+      if (resp?.identity?.identityaddress === entry.iAddress) {
+        // Arrived. Broadcast for the popup and clear the entry.
+        chrome.runtime.sendMessage({
+          type: 'EXPORT_RESOLVED',
+          friendlyName: entry.friendlyName,
+          iAddress: entry.iAddress,
+          destChainKey: entry.destChainKey,
+        }).catch(() => {});
+        try {
+          chrome.notifications.create({
+            type: 'basic',
+            iconUrl: 'images/icon-128.png',
+            title: 'VerusID export complete',
+            message: `${entry.friendlyName} is now active on ${entry.destChainKey}.`,
+          });
+        } catch {}
+        delete map[k];
+        changed = true;
+      }
+    } catch {
+      // Destination daemon unreachable or identity not yet found — leave
+      // the entry in place for the next tick.
+    }
+  }
+  if (changed) await chrome.storage.local.set({ pendingExports: map });
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'exportArrivalPoll') pollPendingExports().catch(() => {});
+});
+
+// On SW boot, if there are leftover pending exports from a prior session,
+// re-arm the alarm so polling resumes without the user re-triggering anything.
+chrome.storage.local.get(['pendingExports'], (data) => {
+  const map = data.pendingExports || {};
+  if (Object.keys(map).length > 0) {
+    chrome.alarms.create('exportArrivalPoll', { periodInMinutes: 0.5 }).catch(() => {});
+  }
+});
+
 // === Lock / Unlock ===
 
 function broadcastLock() {
@@ -333,6 +392,30 @@ async function callRpc(method: string, params: any[] = []): Promise<any> {
   const response = await fetch(config.url, { method: 'POST', headers, body });
   const json = await response.json();
 
+  if (json.error) throw new Error(json.error.message || JSON.stringify(json.error));
+  return json.result;
+}
+
+// Issue an RPC call against a specific chain (not the active one). Used by
+// cross-chain flows — most notably the export-arrival poller, which needs to
+// hit the destination chain's daemon while the user remains on the source
+// chain. Reads creds from chains[chainKey].
+async function callRpcOn(chainKey: string, method: string, params: any[] = []): Promise<any> {
+  const data = await chrome.storage.local.get(['chains']);
+  const chains: ChainsMap = data.chains || {};
+  const chain = chains[chainKey];
+  if (!chain || !chain.user || !chain.password) {
+    throw new Error(`Chain ${chainKey} is not configured.`);
+  }
+  const body = JSON.stringify({ jsonrpc: '1.0', id: Date.now(), method, params });
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Basic ' + btoa(`${chain.user}:${chain.password}`),
+  };
+  const response = await fetch(`http://${chain.host || '127.0.0.1'}:${chain.port || '27486'}`, {
+    method: 'POST', headers, body,
+  });
+  const json = await response.json();
   if (json.error) throw new Error(json.error.message || JSON.stringify(json.error));
   return json.result;
 }
@@ -1143,6 +1226,87 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           lockTimeout: lockTimeoutMs,
         });
       });
+    return true;
+  }
+
+  if (message.type === 'EXPORT_ID') {
+    // Cross-chain VerusID export. The active chain is the source; the
+    // destination chain key comes from the popup. The Verus consensus
+    // rule is "only the controller of <id>@ may export it" — and the
+    // controller check passes only when the spent UTXO is at the
+    // identity's own i-address, NOT at a wallet R-address that holds the
+    // primary key. So we precheck for an i-addr UTXO before issuing the
+    // sendcurrency.
+    if (!isUnlocked) { sendResponse({ ok: false, error: 'Wallet is locked' }); return; }
+    const { friendlyName, iAddress, destChainKey, password } = message;
+    if (!friendlyName || !iAddress || !destChainKey) {
+      sendResponse({ ok: false, error: 'friendlyName, iAddress, destChainKey required' });
+      return;
+    }
+    (async () => {
+      try {
+        const pwOk = await verifyPassword(password || '');
+        if (!pwOk) { sendResponse({ ok: false, error: 'Wrong password' }); return; }
+        const sourceChainKey = await getActiveChainKey();
+        if (!sourceChainKey) throw new Error('No active chain');
+        if (sourceChainKey === destChainKey) throw new Error('Source and destination chains are the same');
+        const data = await chrome.storage.local.get(['chains']);
+        const chains: ChainsMap = data.chains || {};
+        if (!chains[destChainKey]) throw new Error(`Destination chain ${destChainKey} is not configured`);
+        // Precheck the i-addr UTXO. The export fee is paid from a UTXO sitting
+        // at the identity's i-address itself; without one the daemon rejects
+        // with a misleading "shielding requirements" error.
+        const utxos = await callRpc('getaddressutxos', [{ addresses: [iAddress] }]);
+        if (!Array.isArray(utxos) || utxos.length === 0) {
+          throw new Error(`${friendlyName} has no UTXO at its i-address. Send a small amount to ${friendlyName} on the source chain first (one block), then retry.`);
+        }
+        // Issue the export. EXACT syntax: amount: 0 (integer), exportid: true,
+        // NO currency / convertto / via. See feedback_exportid_syntax.md.
+        const output = {
+          address: friendlyName,
+          exportto: destChainKey,
+          exportid: true,
+          amount: 0,
+        };
+        const opid = await callRpc('sendcurrency', [friendlyName, [output]]);
+        // Poll for the source-chain txid.
+        let txid: string | null = null;
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 1000));
+          const ops = await callRpc('z_getoperationresult', [[opid]]);
+          if (Array.isArray(ops) && ops.length > 0) {
+            if (ops[0].status === 'success') { txid = ops[0].result?.txid || null; break; }
+            if (ops[0].status === 'failed') throw new Error(ops[0].error?.message || 'Export failed');
+          }
+        }
+        // Record the pending export so the alarm-driven poller can detect
+        // arrival on the destination chain. Keyed by (destChainKey, iAddress)
+        // so the same ID can't have two pending exports to the same chain.
+        const { pendingExports } = await chrome.storage.local.get(['pendingExports']);
+        const map: Record<string, any> = pendingExports || {};
+        map[`${destChainKey}:${iAddress}`] = {
+          iAddress,
+          friendlyName,
+          sourceChainKey,
+          destChainKey,
+          sourceTxid: txid,
+          broadcastTime: Date.now(),
+        };
+        await chrome.storage.local.set({ pendingExports: map });
+        // Make sure the poller alarm exists.
+        try { await chrome.alarms.create('exportArrivalPoll', { periodInMinutes: 0.5 }); } catch {}
+        sendResponse({ ok: true, txid, opid });
+      } catch (e: any) {
+        sendResponse({ ok: false, error: e?.message || String(e) });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === 'GET_PENDING_EXPORTS') {
+    chrome.storage.local.get(['pendingExports'], (data) => {
+      sendResponse({ exports: data.pendingExports || {} });
+    });
     return true;
   }
 

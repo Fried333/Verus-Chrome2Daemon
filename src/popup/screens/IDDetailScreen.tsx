@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { IconBack } from '../components/Icons';
 import { nativeFor } from '../../data/chains';
 
@@ -52,6 +52,62 @@ export function IDDetailScreen({ identity: id, canUpdate, canRevoke, canRecover,
   const [editRevoke, setEditRevoke] = useState('');
   const [editRecovery, setEditRecovery] = useState('');
   const [confirmStep, setConfirmStep] = useState(false);
+
+  // Cross-chain export state. configuredChains - {sourceChain} = candidates.
+  // pendingExports surfaces an "exporting..." row for any in-flight tx.
+  const [sourceChain, setSourceChain] = useState<string>('');
+  const [otherChains, setOtherChains] = useState<string[]>([]);
+  const [pendingExports, setPendingExports] = useState<Record<string, any>>({});
+  const [exportTarget, setExportTarget] = useState<string | null>(null);
+  const [exportPassword, setExportPassword] = useState('');
+  const [exportError, setExportError] = useState('');
+  const [exporting, setExporting] = useState(false);
+
+  async function reloadExportState() {
+    const chainsResp: { chains?: Record<string, any>; activeChain?: string } = await new Promise((resolve) =>
+      chrome.runtime.sendMessage({ type: 'GET_CHAINS' }, (r) => resolve(r || {}))
+    );
+    const src = chainsResp.activeChain || '';
+    setSourceChain(src);
+    const allKeys = Object.keys(chainsResp.chains || {});
+    setOtherChains(allKeys.filter((k) => k !== src));
+    const peResp: { exports?: Record<string, any> } = await new Promise((resolve) =>
+      chrome.runtime.sendMessage({ type: 'GET_PENDING_EXPORTS' }, (r) => resolve(r || {}))
+    );
+    setPendingExports(peResp.exports || {});
+  }
+
+  useEffect(() => {
+    reloadExportState();
+    const listener = (msg: any) => {
+      if (msg?.type === 'EXPORT_RESOLVED' && msg.iAddress === id.iAddress) {
+        reloadExportState();
+      }
+    };
+    chrome.runtime.onMessage.addListener(listener);
+    return () => chrome.runtime.onMessage.removeListener(listener);
+  }, [id.iAddress]);
+
+  async function confirmExport(destChain: string) {
+    if (!exportPassword) { setExportError('Password required'); return; }
+    setExporting(true);
+    setExportError('');
+    const resp: any = await new Promise((resolve) =>
+      chrome.runtime.sendMessage(
+        { type: 'EXPORT_ID', friendlyName: id.friendlyName, iAddress: id.iAddress, destChainKey: destChain, password: exportPassword },
+        (r) => resolve(r || {})
+      )
+    );
+    setExporting(false);
+    if (!resp.ok) {
+      setExportError(resp.error || 'Export failed');
+      setExportPassword('');
+      return;
+    }
+    setExportPassword('');
+    setExportTarget(null);
+    reloadExportState();
+  }
 
   function startAction(type: Action) {
     setAction(type);
@@ -322,6 +378,81 @@ export function IDDetailScreen({ identity: id, canUpdate, canRevoke, canRecover,
             </>
           )}
         </div>
+
+        {/* Cross-chain export. Only shown when at least one other chain is
+            configured AND the current user is the primary holder (canUpdate).
+            The export tx must spend a UTXO at this identity's i-address, so
+            holding the primary key is the gating control. */}
+        {canUpdate && otherChains.length > 0 && (
+          <div style={{ marginTop: 16, padding: '12px 0', borderTop: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
+              Cross-chain
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 8 }}>
+              Export <span style={{ fontFamily: 'monospace' }}>{id.friendlyName}</span> to another chain from <span style={{ fontFamily: 'monospace' }}>{sourceChain || '(this chain)'}</span>.
+              The identity must have a small UTXO at its i-address ({id.iAddress.slice(0, 8)}…)
+              to pay the export fee. The no-control-token state on the destination is permanent.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {otherChains.map((dest) => {
+                const pendingKey = `${dest}:${id.iAddress}`;
+                const pending = pendingExports[pendingKey];
+                if (pending) {
+                  return (
+                    <div key={dest} style={{
+                      padding: '8px 10px', borderRadius: 6, border: '1px dashed var(--border)',
+                      background: 'var(--bg-tertiary)', display: 'flex', justifyContent: 'space-between',
+                      alignItems: 'center', fontSize: 12,
+                    }}>
+                      <span>Exporting to <span style={{ fontFamily: 'monospace' }}>{dest}</span>…</span>
+                      <span style={{ fontSize: 10, color: 'var(--text-subtle)' }}>
+                        broadcast {Math.max(1, Math.round((Date.now() - pending.broadcastTime) / 60000))}m ago
+                      </span>
+                    </div>
+                  );
+                }
+                const isTarget = exportTarget === dest;
+                if (isTarget) {
+                  return (
+                    <div key={dest} style={{
+                      padding: 10, borderRadius: 6, border: '1px solid var(--accent)',
+                      background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: 6,
+                    }}>
+                      <div style={{ fontSize: 11 }}>
+                        Export <span style={{ fontFamily: 'monospace' }}>{id.friendlyName}</span> to <span style={{ fontFamily: 'monospace' }}>{dest}</span>?
+                      </div>
+                      <input type="password" value={exportPassword}
+                        onChange={(e) => setExportPassword(e.target.value)}
+                        placeholder="Wallet password" autoFocus
+                        style={{ width: '100%', fontSize: 12, padding: '4px 6px' }} />
+                      {exportError && <p className="error" style={{ margin: 0, fontSize: 11 }}>{exportError}</p>}
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => { setExportTarget(null); setExportPassword(''); setExportError(''); }}
+                          style={{ flex: 1, padding: '6px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                          Cancel
+                        </button>
+                        <button onClick={() => confirmExport(dest)} disabled={exporting || !exportPassword}
+                          style={{ flex: 1, padding: '6px', fontSize: 12, borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'white', cursor: 'pointer', opacity: (exporting || !exportPassword) ? 0.5 : 1 }}>
+                          {exporting ? 'Exporting…' : `Confirm export to ${dest}`}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <button key={dest} onClick={() => { setExportTarget(dest); setExportPassword(''); setExportError(''); }}
+                    style={{
+                      padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)',
+                      background: 'var(--bg-tertiary)', textAlign: 'left', fontSize: 12,
+                      cursor: 'pointer', color: 'var(--text-primary)',
+                    }}>
+                    Export to <span style={{ fontFamily: 'monospace' }}>{dest}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Advanced */}
         <div style={{ marginTop: 16 }}>
