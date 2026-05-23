@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { IconBack, IconCheck, IconPlus } from '../components/Icons';
+import { nativeFor } from '../../data/chains';
 
 interface Props {
   currentAddress: string;
@@ -36,15 +37,21 @@ export function AccountSelectorScreen({ currentAddress, onBack, onSelect }: Prop
 
     const addrs: string[] = resp.result;
 
-    // Load pinned addresses
+    // Resolve the active chain key once; pinned + accountName storage is
+    // chain-prefixed because the same R-address only lives in one daemon's
+    // wallet anyway, and i-addresses can carry different state per chain.
+    const { activeChain } = await chrome.storage.local.get(['activeChain']);
+    const chainKey: string = activeChain || 'VRSC';
+
+    // Load pinned addresses for this chain
     const pinData: Record<string, boolean> = await new Promise(resolve => {
-      chrome.storage.local.get(['pinnedAddresses'], (data) => resolve(data.pinnedAddresses || {}));
+      chrome.storage.local.get([`pinnedAddresses:${chainKey}`], (data) => resolve(data[`pinnedAddresses:${chainKey}`] || {}));
     });
     const pinned = new Set(Object.keys(pinData).filter(k => pinData[k]));
     setPinnedAddresses(pinned);
 
-    // Load saved names
-    const nameKeys = addrs.map(a => 'accountName:' + a);
+    // Load saved names (chain-prefixed)
+    const nameKeys = addrs.map(a => `accountName:${chainKey}:${a}`);
     const savedNames: Record<string, string> = await new Promise(resolve => {
       chrome.storage.local.get(nameKeys, (data) => resolve(data));
     });
@@ -69,11 +76,15 @@ export function AccountSelectorScreen({ currentAddress, onBack, onSelect }: Prop
 
     const accts: Account[] = [];
 
-    // Fetch R-address balances
+    const native = nativeFor(chainKey);
+
+    // Fetch R-address balances. The "headline" balance is the active chain's
+    // native currency; on a non-native chain this column is the chain's own
+    // coin (e.g. vARRR on vARRR), not VRSC.
     for (let i = 0; i < addrs.length; i++) {
       const addr = addrs[i];
       const br = await rpc('getBalance', { address: addr });
-      const vrsc = br?.result?.currencybalance?.['i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV'] || 0;
+      const nativeBal = (native.iaddress && br?.result?.currencybalance?.[native.iaddress]) || 0;
       const currCount = br?.result?.currencybalance ? Object.values(br.result.currencybalance).filter((v: any) => Number(v) > 0).length : 0;
       const hasBalance = currCount > 0;
       const hasId = identities.some(id => id.primaryAddress === addr);
@@ -82,8 +93,8 @@ export function AccountSelectorScreen({ currentAddress, onBack, onSelect }: Prop
       if (hasBalance || hasId || addr === currentAddress || pinned.has(addr)) {
         accts.push({
           address: addr,
-          vrsc: Number(vrsc),
-          name: savedNames['accountName:' + addr] || `Account ${i + 1}`,
+          vrsc: Number(nativeBal),
+          name: savedNames[`accountName:${chainKey}:${addr}`] || `Account ${i + 1}`,
           type: 'address',
           currencyCount: currCount,
         });
@@ -93,14 +104,14 @@ export function AccountSelectorScreen({ currentAddress, onBack, onSelect }: Prop
     // Fetch identity balances — only show IDs with holdings
     for (const id of identities) {
       const br = await rpc('getBalance', { address: id.iAddress });
-      const vrsc = br?.result?.currencybalance?.['i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV'] || 0;
+      const nativeBal = (native.iaddress && br?.result?.currencybalance?.[native.iaddress]) || 0;
       const currCount = br?.result?.currencybalance ? Object.values(br.result.currencybalance).filter((v: any) => Number(v) > 0).length : 0;
 
       if (currCount === 0 && id.iAddress !== currentAddress) continue;
 
       accts.push({
         address: id.iAddress,
-        vrsc: Number(vrsc),
+        vrsc: Number(nativeBal),
         name: id.friendlyName,
         type: 'identity',
         currencyCount: currCount,
@@ -136,7 +147,10 @@ export function AccountSelectorScreen({ currentAddress, onBack, onSelect }: Prop
     setPinnedAddresses(newPinned);
     const pinObj: Record<string, boolean> = {};
     newPinned.forEach(a => pinObj[a] = true);
-    chrome.storage.local.set({ pinnedAddresses: pinObj });
+    chrome.storage.local.get(['activeChain'], ({ activeChain }) => {
+      const chainKey: string = activeChain || 'VRSC';
+      chrome.storage.local.set({ [`pinnedAddresses:${chainKey}`]: pinObj });
+    });
   }
 
   const rAddresses = accounts.filter(a => a.type === 'address');

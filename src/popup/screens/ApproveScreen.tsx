@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { nativeFor } from '../../data/chains';
 
 interface PendingRequest {
   id: string;
@@ -6,6 +7,10 @@ interface PendingRequest {
   params: any;
   origin: string;
   context?: any;
+  // Chain key snapshotted at request time. The SW refuses to execute if the
+  // active chain has drifted since then, so we surface it here so the user
+  // can see which chain will sign.
+  chainKey?: string | null;
 }
 
 interface Props {
@@ -25,7 +30,20 @@ export function ApproveScreen({ request, remaining, onApprove, onReject }: Props
   const [password, setPassword] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState('');
+  const [nativeName, setNativeName] = useState<string>('VRSC');
+  const [activeChain, setActiveChain] = useState<string | null>(null);
   const label = METHOD_LABELS[request.method] || request.method;
+  const requestChain: string | null = request.chainKey || null;
+  const chainMismatch = !!(requestChain && activeChain && requestChain !== activeChain);
+
+  useEffect(() => {
+    chrome.storage.local.get(['activeChain'], ({ activeChain: ac }) => {
+      setActiveChain(ac || null);
+      // Render labels for the chain that ISSUED the request — that's the
+      // daemon the tx will execute against (or be refused if mismatched).
+      setNativeName(nativeFor(requestChain || ac || null).name);
+    });
+  }, [requestChain]);
 
   function handleApprove() {
     if (!password) return;
@@ -84,12 +102,25 @@ export function ApproveScreen({ request, remaining, onApprove, onReject }: Props
         )}
       </div>
 
-      {/* Origin */}
-      <div className="px-4 pt-4 pb-2">
+      {/* Origin + chain */}
+      <div className="px-4 pt-4 pb-2 space-y-2">
         <div className="bg-white border border-gray-200 rounded-lg px-3 py-2">
           <div className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">Requesting Site</div>
           <div className="text-sm font-medium text-gray-800 mt-0.5 truncate">{request.origin}</div>
         </div>
+        {requestChain && (
+          <div className={`border rounded-lg px-3 py-2 ${chainMismatch ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'}`}>
+            <div className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">Will sign on chain</div>
+            <div className="text-sm font-medium mt-0.5" style={{ fontFamily: 'monospace' }}>
+              {requestChain}
+              {chainMismatch && (
+                <span className="ml-2 text-xs text-red-700 font-normal">
+                  ⚠ active chain is {activeChain}. Switch back to {requestChain} to approve, or reject this request.
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Action */}
@@ -104,7 +135,7 @@ export function ApproveScreen({ request, remaining, onApprove, onReject }: Props
           {request.method === 'sendCurrency' && (
             <div className="space-y-2">
               <ParamRow label="To" value={request.params.to} mono />
-              <ParamRow label="Amount" value={`${request.params.amount} ${request.params.currency || 'VRSC'}`} />
+              <ParamRow label="Amount" value={`${request.params.amount} ${request.params.currency || nativeName}`} />
               {request.params.convertto && (
                 <ParamRow label="Convert to" value={request.params.convertto} />
               )}
@@ -173,10 +204,11 @@ export function ApproveScreen({ request, remaining, onApprove, onReject }: Props
         </button>
         <button
           onClick={handleApprove}
-          disabled={!password || verifying}
+          disabled={!password || verifying || chainMismatch}
           className="flex-1 h-10 rounded-lg bg-blue-600 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
+          title={chainMismatch ? `Switch back to ${requestChain} to approve` : undefined}
         >
-          {verifying ? 'Verifying...' : 'Approve'}
+          {verifying ? 'Verifying...' : chainMismatch ? 'Chain mismatch' : 'Approve'}
         </button>
       </div>
     </div>

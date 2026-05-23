@@ -34,6 +34,8 @@ export function App() {
   const [hasPassword, setHasPassword] = useState(false);
   const [sendCurrency, setSendCurrency] = useState<string>('VRSC');
   const [swapFromCurrency, setSwapFromCurrency] = useState<string>('VRSC');
+  const [activeChain, setActiveChain] = useState<string | null>(null);
+  const [nativeName, setNativeName] = useState<string>('VRSC');
   const [selectedId, setSelectedId] = useState<any>(null);
   const [idWalletAddrs, setIdWalletAddrs] = useState<Set<string>>(new Set());
   const [subscriptionData, setSubscriptionData] = useState<any>(null);
@@ -43,6 +45,13 @@ export function App() {
       if (chrome.runtime.lastError) return;
       if (state?.connectedAddress) setAddress(state.connectedAddress);
       setHasPassword(!!state?.hasPassword);
+      if (state?.activeChain) setActiveChain(state.activeChain);
+      const native: string = state?.activeChainMeta?.nativeName || 'VRSC';
+      setNativeName(native);
+      // Seed currency defaults from the active chain's native if the user
+      // hasn't explicitly picked one yet (i.e. still on the boot default).
+      setSendCurrency((c) => (c === 'VRSC' || c === '') ? native : c);
+      setSwapFromCurrency((c) => (c === 'VRSC' || c === '') ? native : c);
 
       if (!state?.isUnlocked) {
         setScreen('lock');
@@ -74,6 +83,24 @@ export function App() {
 
     const listener = (message: any) => {
       if (message.type === 'WALLET_LOCKED') setScreen('lock');
+      if (message.type === 'WALLET_CHAIN_CHANGED') {
+        // Hard-reset all address-bound state. The new chain has its own
+        // wallet, its own native currency, and its own pending tx list.
+        // Re-fetch state to pick up the new chain's selected address +
+        // native meta.
+        setAddress('');
+        setAccountName('Account 1');
+        setPending([]);
+        setPendingDeeplinks([]);
+        setSelectedId(null);
+        setIdWalletAddrs(new Set());
+        setSubscriptionData(null);
+        // Reset currency defaults so the next GET_STATE in checkStateAndRoute
+        // seeds them from the new chain's native.
+        setSendCurrency('VRSC');
+        setSwapFromCurrency('VRSC');
+        checkStateAndRoute();
+      }
     };
     chrome.runtime.onMessage.addListener(listener);
 
@@ -268,8 +295,8 @@ export function App() {
             address={address}
             accountName={accountName}
             defaultSubTab={walletSubTab}
-            onSend={(currency?: string) => { setSendCurrency(currency || 'VRSC'); setScreen('send'); }}
-            onSwap={(currency?: string) => { setSwapFromCurrency(currency || 'VRSC'); setNavTab('swap'); }}
+            onSend={(currency?: string) => { setSendCurrency(currency || nativeName); setScreen('send'); }}
+            onSwap={(currency?: string) => { setSwapFromCurrency(currency || nativeName); setNavTab('swap'); }}
             onReceive={() => setScreen('receive')}
             onSettings={() => setScreen('settings')}
             onAccountSelector={() => setScreen('accounts')}

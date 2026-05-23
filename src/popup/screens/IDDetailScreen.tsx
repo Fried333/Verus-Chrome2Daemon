@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { IconBack } from '../components/Icons';
+import { nativeFor } from '../../data/chains';
 
 interface IdentityInfo {
   name: string;
@@ -73,13 +74,19 @@ export function IDDetailScreen({ identity: id, canUpdate, canRevoke, canRecover,
     setLoading(true);
     setError('');
 
-    // Check primary address has funds for the fee
-    const balResp = await rpc('getBalance', { address: id.primaryAddress });
-    const vrscBal = balResp?.result?.currencybalance?.['i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV'] || 0;
-    if (Number(vrscBal) < 0.0001) {
-      setError(`Insufficient funds at primary address (${id.primaryAddress.slice(0, 8)}...) — need at least 0.0001 VRSC for the transaction fee`);
-      setLoading(false);
-      return;
+    // Check primary address has funds for the fee. Fees on each chain are
+    // paid in that chain's native currency (VRSC on VRSC, vARRR on vARRR,
+    // etc.) — never assume VRSC iaddr.
+    const { activeChain } = await chrome.storage.local.get(['activeChain']);
+    const native = nativeFor(activeChain || null);
+    if (native.iaddress) {
+      const balResp = await rpc('getBalance', { address: id.primaryAddress });
+      const nativeBal = balResp?.result?.currencybalance?.[native.iaddress] || 0;
+      if (Number(nativeBal) < 0.0001) {
+        setError(`Insufficient funds at primary address (${id.primaryAddress.slice(0, 8)}...) — need at least 0.0001 ${native.name} for the transaction fee`);
+        setLoading(false);
+        return;
+      }
     }
 
     // Fetch the full current identity object — daemon needs all fields for sub-IDs

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { IconSettings, IconSend, IconReceive, IconUser } from '../components/Icons';
+import { nativeFor } from '../../data/chains';
 
 interface Props {
   address: string;
@@ -48,6 +49,13 @@ export function DashboardScreen({ address, accountName, defaultSubTab, onSend, o
   const [expandedTx, setExpandedTx] = useState<string | null>(null);
   const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null);
   const [txLoading, setTxLoading] = useState(false);
+  const [activeChain, setActiveChain] = useState<string | null>(null);
+
+  useEffect(() => {
+    chrome.runtime.sendMessage({ type: 'GET_STATE' }, (s) => {
+      if (s?.activeChain) setActiveChain(s.activeChain);
+    });
+  }, []);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(accountName);
 
@@ -216,7 +224,8 @@ export function DashboardScreen({ address, accountName, defaultSubTab, onSend, o
     setEditingName(false);
   }
 
-  const vrsc = balanceData?.currencybalance?.['i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV'] ?? 0;
+  const native = nativeFor(activeChain);
+  const nativeBal = (native.iaddress && balanceData?.currencybalance?.[native.iaddress]) ?? 0;
   const currencies = Object.entries(balanceData?.currencybalance || {}).filter(([, a]) => Number(a) > 0);
   const currNames = balanceData?.currencynames || {};
 
@@ -235,6 +244,17 @@ export function DashboardScreen({ address, accountName, defaultSubTab, onSend, o
       <div className="dashboard-top">
         <button className="btn-icon account-selector-btn" onClick={onAccountSelector} title="Accounts">
           <IconUser size={20} />
+        </button>
+        <button onClick={onSettings} title="Click to switch chain"
+          style={{
+            fontFamily: 'monospace', fontSize: 11, fontWeight: 600,
+            padding: '4px 10px', borderRadius: 999,
+            border: '1px solid var(--border)', background: 'var(--bg-tertiary)',
+            color: 'var(--text-secondary)', cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
+          {activeChain || '—'}
         </button>
         <button className="btn-icon settings-btn" onClick={onSettings} title="Settings">
           <IconSettings size={20} />
@@ -261,7 +281,7 @@ export function DashboardScreen({ address, accountName, defaultSubTab, onSend, o
         {loading ? (
           <p className="balance-amount">Loading...</p>
         ) : (
-          <p className="balance-amount">{Number(vrsc).toFixed(8)} VRSC</p>
+          <p className="balance-amount">{Number(nativeBal).toFixed(8)} {native.name}</p>
         )}
         {networkInfo && (
           <p className="balance-pending" style={{ color: 'var(--text-subtle)', fontSize: '11px' }}>
@@ -297,7 +317,7 @@ export function DashboardScreen({ address, accountName, defaultSubTab, onSend, o
           <div className="currency-list">
             {currencies.map(([cid, amt]) => {
               const name = currNames[cid] || cid;
-              const isVrsc = cid === 'i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV';
+              const isVrsc = cid === native.iaddress;
               return (
                 <div key={cid} className="currency-row currency-row-clickable"
                   onClick={() => setSelectedCurrency(name as string)}>
@@ -362,7 +382,7 @@ export function DashboardScreen({ address, accountName, defaultSubTab, onSend, o
                       ) : null}
                       {tx.value !== 0 && (
                         <div style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 500, color: tx.value >= 0 ? 'var(--success)' : 'var(--error)' }}>
-                          {tx.value >= 0 ? '+' : ''}{tx.value.toFixed(8)} VRSC
+                          {tx.value >= 0 ? '+' : ''}{tx.value.toFixed(8)} {native.name}
                         </div>
                       )}
                     </div>

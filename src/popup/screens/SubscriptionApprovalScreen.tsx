@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { nativeFor } from '../../data/chains';
 
 interface Plan {
   planId: string;
@@ -40,13 +41,23 @@ export function SubscriptionApprovalScreen({ subscriptionId, subscriberId, provi
   const [allAddresses, setAllAddresses] = useState<Array<{ address: string; balance: number; name: string }>>([]);
   const [showRaw, setShowRaw] = useState(false);
   const [rawCopied, setRawCopied] = useState(false);
+  // Active chain key for resolving the native fee currency. Defaults to VRSC
+  // until storage is read; the few-ms render before the first effect runs is
+  // benign because every value computed off this gets recomputed on update.
+  const [nativeName, setNativeName] = useState<string>('VRSC');
+  useEffect(() => {
+    chrome.storage.local.get(['activeChain'], ({ activeChain }) => {
+      setNativeName(nativeFor(activeChain || null).name);
+    });
+  }, []);
 
-  const currency = plan.currency || 'VRSC';
+  const currency = plan.currency || nativeName;
   const totalCost = plan.amount * plan.periods;
   const txFees = 0.0001 * (plan.periods + 2); // funding tx + identity update + buffer
-  const vrscForBroadcast = currency !== 'VRSC' ? 0.0001 * plan.periods : 0; // VRSC per period for broadcast fees
-  const totalVrscNeeded = currency === 'VRSC' ? totalCost + txFees : txFees + vrscForBroadcast;
-  const totalWithFees = currency === 'VRSC' ? totalCost + txFees : totalCost;
+  // Non-native plan currencies still need native dust to pay broadcast fees.
+  const nativeForBroadcast = currency !== nativeName ? 0.0001 * plan.periods : 0;
+  const totalVrscNeeded = currency === nativeName ? totalCost + txFees : txFees + nativeForBroadcast;
+  const totalWithFees = currency === nativeName ? totalCost + txFees : totalCost;
   const intervalBlocks = plan.intervalBlocks || 1;
 
   function formatDuration(days: number): string {
@@ -65,11 +76,14 @@ export function SubscriptionApprovalScreen({ subscriptionId, subscriberId, provi
       const addrResp = await rpc('getAddress');
       if (!addrResp?.result) return;
       const addrs = addrResp.result as string[];
-      const nameKeys = addrs.map((a: string) => 'accountName:' + a);
+      const { activeChain } = await chrome.storage.local.get(['activeChain']);
+      const chainKey: string = activeChain || 'VRSC';
+      const native = nativeFor(chainKey);
+      const nameKeys = addrs.map((a: string) => `accountName:${chainKey}:${a}`);
       const savedNames: Record<string, string> = await new Promise(resolve => {
         chrome.storage.local.get(nameKeys, (data) => resolve(data));
       });
-      const planCurrency = plan.currency || 'VRSC';
+      const planCurrency = plan.currency || native.name;
       const results: Array<{ address: string; balance: number; name: string }> = [];
       for (let i = 0; i < addrs.length; i++) {
         const a = addrs[i];
@@ -83,11 +97,12 @@ export function SubscriptionApprovalScreen({ subscriptionId, subscriberId, provi
             break;
           }
         }
-        // Also need VRSC for fees
-        const vrscBal = Number(br.result.currencybalance['i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV'] || 0);
-        const hasEnough = planCurrency === 'VRSC' ? currBal >= (totalCost + txFees) : (currBal >= totalCost && vrscBal >= totalVrscNeeded);
+        // Also need native fee currency for broadcast fees when the plan
+        // currency is a non-native reserve.
+        const nativeBal = native.iaddress ? Number(br.result.currencybalance[native.iaddress] || 0) : 0;
+        const hasEnough = planCurrency === native.name ? currBal >= (totalCost + txFees) : (currBal >= totalCost && nativeBal >= totalVrscNeeded);
         if (hasEnough) {
-          results.push({ address: a, balance: currBal, name: savedNames['accountName:' + a] || `Account ${i + 1}` });
+          results.push({ address: a, balance: currBal, name: savedNames[`accountName:${chainKey}:${a}`] || `Account ${i + 1}` });
         }
       }
       setAllAddresses(results);
@@ -121,16 +136,19 @@ export function SubscriptionApprovalScreen({ subscriptionId, subscriberId, provi
     setExecProgress(5);
     setExecStatus('Generating dedicated address...');
 
-    // Generate, name and pin the dedicated address
+    // Generate, name and pin the dedicated address (chain-scoped: a dedicated
+    // sub address lives in whichever chain's wallet is active right now).
     const addrResp = await rpc('newAddress');
     const dedAddr = addrResp?.result || '';
     if (dedAddr) {
       const subName = 'Subscription - ' + (providerName || provider).replace(/@$/, '');
-      chrome.storage.local.set({ ['accountName:' + dedAddr]: subName });
-      chrome.storage.local.get(['pinnedAddresses'], (data) => {
-        const pinned = data.pinnedAddresses || {};
+      const { activeChain } = await chrome.storage.local.get(['activeChain']);
+      const chainKey: string = activeChain || 'VRSC';
+      chrome.storage.local.set({ [`accountName:${chainKey}:${dedAddr}`]: subName });
+      chrome.storage.local.get([`pinnedAddresses:${chainKey}`], (data) => {
+        const pinned = data[`pinnedAddresses:${chainKey}`] || {};
         pinned[dedAddr] = true;
-        chrome.storage.local.set({ pinnedAddresses: pinned });
+        chrome.storage.local.set({ [`pinnedAddresses:${chainKey}`]: pinned });
       });
     }
 
@@ -259,18 +277,18 @@ export function SubscriptionApprovalScreen({ subscriptionId, subscriberId, provi
         <Row label="Total duration" value={formatDuration(totalDays)} />
         <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6 }}>
           <Row label="Subscription cost" value={`${totalCost.toFixed(8)} ${currency}`} />
-          {currency === 'VRSC' ? (
+          {currency === nativeName ? (
             <>
-              <Row label="TX fees (est.)" value={`~${txFees.toFixed(4)} VRSC`} />
-              <Row label="Total" value={`${(totalCost + txFees).toFixed(8)} VRSC`} highlight />
+              <Row label="TX fees (est.)" value={`~${txFees.toFixed(4)} ${nativeName}`} />
+              <Row label="Total" value={`${(totalCost + txFees).toFixed(8)} ${nativeName}`} highlight />
             </>
           ) : (
             <>
               <Row label="Total" value={`${totalCost.toFixed(8)} ${currency}`} highlight />
               <div style={{ borderTop: '1px dashed var(--border)', marginTop: 4, paddingTop: 4 }}>
-                <Row label="VRSC for broadcast fees" value={`${vrscForBroadcast.toFixed(4)} VRSC`} />
-                <Row label="VRSC for TX fees" value={`~${txFees.toFixed(4)} VRSC`} />
-                <Row label="Total VRSC needed" value={`~${totalVrscNeeded.toFixed(4)} VRSC`} />
+                <Row label={`${nativeName} for broadcast fees`} value={`${nativeForBroadcast.toFixed(4)} ${nativeName}`} />
+                <Row label={`${nativeName} for TX fees`} value={`~${txFees.toFixed(4)} ${nativeName}`} />
+                <Row label={`Total ${nativeName} needed`} value={`~${totalVrscNeeded.toFixed(4)} ${nativeName}`} />
               </div>
             </>
           )}
@@ -335,8 +353,8 @@ export function SubscriptionApprovalScreen({ subscriptionId, subscriberId, provi
       {(balance < totalCost || allAddresses.length === 0) && (
         <div style={{ fontSize: 11, color: 'var(--error)', background: 'var(--bg-secondary)', borderRadius: 6, padding: '6px 10px', border: '1px solid var(--error)' }}>
           {allAddresses.length === 0
-            ? `No address has both ${totalCost.toFixed(8)} ${currency}${currency !== 'VRSC' ? ` and ~${totalVrscNeeded.toFixed(4)} VRSC for fees` : ''}.`
-            : `Insufficient ${currency}. Need ${totalCost.toFixed(8)} ${currency}${currency !== 'VRSC' ? ` + ~${totalVrscNeeded.toFixed(4)} VRSC` : ''}.`
+            ? `No address has both ${totalCost.toFixed(8)} ${currency}${currency !== nativeName ? ` and ~${totalVrscNeeded.toFixed(4)} ${nativeName} for fees` : ''}.`
+            : `Insufficient ${currency}. Need ${totalCost.toFixed(8)} ${currency}${currency !== nativeName ? ` + ~${totalVrscNeeded.toFixed(4)} ${nativeName}` : ''}.`
           }
         </div>
       )}
