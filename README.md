@@ -6,11 +6,18 @@ JSON-RPC and gates mutating operations behind an explicit user approval.
 
 ## Features
 
+- **Multi-chain** — Connect to VRSC, vDEX, vARRR, or CHIPS (or any custom
+  Verus PBaaS daemon). Each chain has its own RPC credentials, its own
+  selected address, and its own balance / activity view. Switch chains from
+  the dashboard or Settings pill, and the UI hard-resets to the new chain's
+  state.
 - **VerusID Login** — Sign in to websites using the `verus://` deep-link
   protocol with the verus-connect v5.2 GenericRequest / GenericResponse
   envelope flow.
-- **Send / Receive** — Send VRSC and reserve currencies with approval popups.
-- **Balance & UTXOs** — View balances across addresses and currencies.
+- **Send / Receive** — Send the active chain's native currency or any
+  reserve currency, with approval popups.
+- **Balance & UTXOs** — View balances across addresses and currencies; the
+  headline balance reflects whichever chain is active.
 - **Identity Management** — List, select, and update VerusIDs (with diffed
   approval for any on-chain change).
 - **VerusSub Subscriptions** — Time-locked subscription payments via
@@ -20,23 +27,34 @@ JSON-RPC and gates mutating operations behind an explicit user approval.
 ## Architecture
 
 ```
-Website                 Extension                       Local Daemon
-  |                       |                                |
-  |--- window.verus ----> | inpage.ts (injected)           |
-  |                       | content.ts (bridge)            |
-  |                       | background.js (service worker) |
-  |                       |--- JSON-RPC over HTTP -------> | verusd :27486
-  |                       | side panel (React UI)          |
+Website                 Extension                          Local Daemons
+  |                       |                                  |
+  |--- window.verus ----> | inpage.ts (injected)             |  verusd  :27486 (VRSC)
+  |                       | content.ts (bridge)              |  vdexd   :21778
+  |                       | background.js (service worker)   |  varrrd  :20778
+  |                       |--- JSON-RPC over HTTP ---------> |  chipsd  :22778
+  |                       | side panel (React UI)            |
+  |                       |   ↑ active-chain selector picks  |
+  |                       |     which daemon RPC routes to   |
 ```
 
 - **Non-custodial.** No keys stored in the extension. All signing done by the
   daemon (`signdata`, `signmessage`, `signrawtransaction`).
+- **One active chain at a time.** Per-chain credentials live in
+  `chrome.storage.local`; the active chain decides which daemon every RPC
+  call routes to. Each chain also has its own selected account, pending tx
+  history, and account-name overrides — they don't bleed across chains.
 - **RPC allowlist.** The page-callable API is gated by an explicit set of
   methods. Dangerous daemon RPCs (`dumpprivkey`, `z_exportkey`, etc.) are
   never exposed.
 - **Per-method approval.** All mutating operations (`sendCurrency`,
   `signMessage`, `updateIdentity`, `subscribe`, `cancelSubscription`) require
   a side-panel approval with full parameter rendering and password re-entry.
+- **Chain-bound approvals.** The chain in effect when the page issued the
+  request is snapshotted on the pending-approval record. If the user
+  switches chains before clicking Approve, the service worker refuses to
+  execute and the approval screen surfaces a red mismatch banner — so a
+  page request issued under chain A can never be silently signed on chain B.
 - **Verified relying party.** VerusID login requests are cryptographically
   verified against the claimed signing identity (`verifyhash` RPC) before
   the user sees any "Challenge signed by …" attribution.
@@ -61,8 +79,28 @@ Load the extension:
 1. Open `chrome://extensions` (or `brave://extensions`).
 2. Enable **Developer mode**.
 3. Click **Load unpacked** and select the `dist/` folder.
-4. Click the extension icon, set your RPC credentials (from
-   `~/.komodo/VRSC/VRSC.conf`), then set a wallet password.
+4. Click the extension icon to open the side panel.
+5. **Pick the chain you want to set up first** (VRSC by default — a green
+   dot next to the pill means a daemon is detected on its default RPC
+   port). The setup screen shows you the exact `.conf` path for the
+   selected chain on your OS (linux / mac / win) with a one-liner you can
+   paste into a terminal to extract `rpcuser` / `rpcpassword` / `rpcport`.
+   Paste the output into the textarea and hit **Connect**.
+6. Set a wallet password.
+7. To add another chain (e.g. vARRR), go to **Settings → Add / edit chain**
+   and repeat from step 5 with a different chain pill selected. Configured
+   chains then appear as switchable pills both in Settings and at the top
+   of the dashboard.
+
+Default RPC ports the extension expects per chain (override-able under
+**Custom host / port** if your daemon was launched with `-rpcport=…`):
+
+| Chain | Port |
+|---|---|
+| VRSC | 27486 |
+| vDEX | 21778 |
+| vARRR | 20778 |
+| CHIPS | 22778 |
 
 ## Build
 
@@ -101,6 +139,11 @@ described in detail in [SECURITY.md](SECURITY.md). Highlights:
 - **Mandatory approval rendering.** The approval screen refuses to display
   any method it cannot render the parameters of — adding a new mutating
   method without a UI is a hard failure, not a silent allow.
+- **Chain-bound approval execution.** Every pending approval records the
+  chain that was active when the page made the request. If the user
+  switches chains before clicking Approve, the service worker rejects the
+  call and the page caller gets an explanatory error — a request scoped to
+  chain A can never silently sign on chain B's daemon.
 - **VerusID change diffing.** `updateIdentity` approvals fetch the current
   on-chain identity and render a structured diff. Revoke / recovery
   authority changes are surfaced as a prominent warning, since they are the
