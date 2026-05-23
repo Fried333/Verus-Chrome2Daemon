@@ -56,7 +56,10 @@ export function AccountSelectorScreen({ currentAddress, onBack, onSelect }: Prop
       chrome.storage.local.get(nameKeys, (data) => resolve(data));
     });
 
-    // Get identities
+    // Get identities — listidentities is chain-local, so this is already
+    // filtered to IDs that exist on the active daemon. We additionally
+    // require a clean getidentity resolve, so a partially-replicated entry
+    // doesn't get surfaced as a usable account.
     const idResp = await rpc('listIdentities');
     const identities: Array<{ name: string; friendlyName: string; iAddress: string; primaryAddress: string }> = [];
     if (idResp?.result && Array.isArray(idResp.result)) {
@@ -65,6 +68,7 @@ export function AccountSelectorScreen({ currentAddress, onBack, onSelect }: Prop
         if (ident.name?.startsWith('3965555_')) continue;
         const iAddr = ident.identityaddress || '';
         const fullResp = await rpc('getIdentity', { nameOrId: iAddr });
+        if (!fullResp?.result?.identity) continue;
         identities.push({
           name: ident.name,
           friendlyName: fullResp?.result?.friendlyname || (ident.name + '@'),

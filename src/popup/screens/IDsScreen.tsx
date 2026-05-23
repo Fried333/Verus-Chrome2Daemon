@@ -11,29 +11,50 @@ function rpc(method: string, params?: any): Promise<any> {
   });
 }
 
+interface KnownIdEntry {
+  iAddress: string;
+  friendlyName: string;
+  primaryAddress: string;
+  firstSeenChain: string;
+  lastSeenAt: number;
+}
+
 export function IDsScreen({ address, onSelectId }: Props) {
   const [identities, setIdentities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [walletAddresses, setWalletAddresses] = useState<Set<string>>(new Set());
+  // VerusIDs the user owns elsewhere but that aren't on the active chain.
+  // The active-chain listidentities call is authoritative for what's here;
+  // this set is the "elsewhere" footer.
+  const [otherChainIds, setOtherChainIds] = useState<KnownIdEntry[]>([]);
+  const [showOthers, setShowOthers] = useState(false);
+  const [activeChain, setActiveChain] = useState<string>('');
 
   useEffect(() => { loadIdentities(); }, [address]);
 
   async function loadIdentities() {
     setLoading(true);
 
+    const { activeChain: ac } = await chrome.storage.local.get(['activeChain']);
+    setActiveChain(ac || '');
+
     const addrResp = await rpc('getAddress');
     const walletAddrs = new Set<string>(addrResp?.result || []);
 
     const resp = await rpc('listIdentities');
+    const liveIaddrs = new Set<string>();
+    let ids: any[] = [];
     if (resp?.result && Array.isArray(resp.result)) {
       // Add all i-addresses to wallet set
       for (const idObj of resp.result) {
         const iAddr = idObj.identity?.identityaddress;
-        if (iAddr) walletAddrs.add(iAddr);
+        if (iAddr) {
+          walletAddrs.add(iAddr);
+          liveIaddrs.add(iAddr);
+        }
       }
       setWalletAddresses(walletAddrs);
 
-      const ids: any[] = [];
       for (const idObj of resp.result) {
         const ident = idObj.identity || {};
         if (ident.name?.startsWith('3965555_')) continue;
@@ -57,6 +78,19 @@ export function IDsScreen({ address, onSelectId }: Props) {
       }
       setIdentities(ids);
     }
+
+    // Cross-chain footer: anything the wallet has seen on other chains but
+    // that didn't show up in the active daemon's list. Presence on this
+    // chain is authoritative via the listidentities result above.
+    const known: { ids?: Record<string, KnownIdEntry> } = await new Promise((resolve) =>
+      chrome.runtime.sendMessage({ type: 'LIST_KNOWN_IDS' }, (r) => resolve(r || {}))
+    );
+    const others: KnownIdEntry[] = [];
+    for (const k of Object.values(known.ids || {})) {
+      if (!liveIaddrs.has(k.iAddress)) others.push(k);
+    }
+    setOtherChainIds(others);
+
     setLoading(false);
   }
 
@@ -65,7 +99,7 @@ export function IDsScreen({ address, onSelectId }: Props) {
       <div style={{ padding: '16px 16px 8px' }}>
         <h2 style={{ margin: 0 }}>VerusIDs</h2>
         <p style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: 4 }}>
-          Identities linked to this address
+          Identities linked to this address{activeChain ? ` on ${activeChain}` : ''}
         </p>
       </div>
 
@@ -101,6 +135,45 @@ export function IDsScreen({ address, onSelectId }: Props) {
               <span style={{ color: 'var(--text-subtle)', fontSize: 16 }}>›</span>
             </div>
           ))
+        )}
+
+        {!loading && otherChainIds.length > 0 && (
+          <div style={{ borderTop: '1px solid var(--border)' }}>
+            <button
+              onClick={() => setShowOthers((v) => !v)}
+              style={{
+                width: '100%', padding: '12px 16px', background: 'transparent', border: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 12,
+              }}>
+              <span>{otherChainIds.length} other ID{otherChainIds.length > 1 ? 's' : ''} not on {activeChain || 'this chain'}</span>
+              <span>{showOthers ? '▴' : '▾'}</span>
+            </button>
+            {showOthers && otherChainIds.map((k) => (
+              <div key={k.iAddress}
+                title={`Last seen on ${k.firstSeenChain}. Export to ${activeChain || 'this chain'} coming in a future update.`}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '12px 16px', borderTop: '1px dashed var(--border)', opacity: 0.55,
+                }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 8,
+                    background: 'var(--bg-tertiary)', border: '1px dashed var(--border)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 700, color: 'var(--text-subtle)', flexShrink: 0,
+                  }}>ID</div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{k.friendlyName}</div>
+                    <div style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-subtle)' }}>
+                      {k.iAddress.slice(0, 12)}...{k.iAddress.slice(-6)} · seen on {k.firstSeenChain}
+                    </div>
+                  </div>
+                </div>
+                <span style={{ fontSize: 10, color: 'var(--text-subtle)' }}>not exported</span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
