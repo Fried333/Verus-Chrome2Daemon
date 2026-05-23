@@ -4,6 +4,26 @@ Chrome/Brave extension that bridges web pages to your **local Verus daemon**.
 Non-custodial — your keys never leave the daemon. The extension only relays
 JSON-RPC and gates mutating operations behind an explicit user approval.
 
+> ⚠️ **Use at your own risk.** This software is provided **AS IS, without
+> warranty of any kind**, express or implied. The authors and contributors
+> accept **no liability** for any loss of funds, identity compromise, data
+> loss, or other damages arising from use of this extension. Cryptocurrency
+> wallet software is high-risk by nature: bugs, misconfiguration, or a
+> compromised browser / daemon / host can lead to **irreversible loss**.
+>
+> Before relying on this wallet:
+> - Read the code (the codebase is small and audit-friendly), and / or
+>   commission a third-party security review for non-trivial amounts.
+> - **Test with small amounts first.** Verify a few sends, swaps, and ID
+>   updates on each chain you intend to use before holding material value.
+> - **Back up your daemon's `wallet.dat`** (and any imported privkeys). The
+>   extension stores no keys; recovery is entirely on the daemon side.
+> - **Verify every approval popup** — recipient address, amount, currency,
+>   chain — before clicking Approve. The extension renders what the page
+>   asked for; only your eyes can spot a malicious page.
+> - This project is **not affiliated with or endorsed by** the Verus Coin
+>   Foundation. It is an independent client implementation.
+
 ## Features
 
 - **Multi-chain** — Connect to VRSC, vDEX, vARRR, or CHIPS (or any custom
@@ -170,4 +190,10 @@ See [SECURITY.md](SECURITY.md). Do not open public issues for security bugs.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) — see the LICENSE file for the full text, including the
+disclaimer of warranty and limitation of liability.
+
+In short: the software is distributed "AS IS", without warranty of any
+kind, and the authors are not liable for any claim, damages, or other
+liability arising from its use. By installing and using this extension you
+accept these terms.
