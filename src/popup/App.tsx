@@ -39,6 +39,9 @@ export function App() {
   const [selectedId, setSelectedId] = useState<any>(null);
   const [idWalletAddrs, setIdWalletAddrs] = useState<Set<string>>(new Set());
   const [subscriptionData, setSubscriptionData] = useState<any>(null);
+  // Transient banner for cross-chain export arrivals. Auto-dismisses; only
+  // visible while the user is in the popup at the moment of arrival.
+  const [exportToast, setExportToast] = useState<{ friendlyName: string; destChainKey: string } | null>(null);
 
   function checkStateAndRoute() {
     chrome.runtime.sendMessage({ type: 'GET_STATE' }, (state) => {
@@ -83,6 +86,10 @@ export function App() {
 
     const listener = (message: any) => {
       if (message.type === 'WALLET_LOCKED') setScreen('lock');
+      if (message.type === 'EXPORT_RESOLVED') {
+        setExportToast({ friendlyName: message.friendlyName, destChainKey: message.destChainKey });
+        setTimeout(() => setExportToast(null), 6000);
+      }
       if (message.type === 'WALLET_CHAIN_CHANGED') {
         // Hard-reset all address-bound state. The new chain has its own
         // wallet, its own native currency, and its own pending tx list.
@@ -289,6 +296,16 @@ export function App() {
   // Main screen with bottom nav
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      {exportToast && (
+        <div style={{
+          position: 'absolute', top: 8, left: 8, right: 8, zIndex: 50,
+          background: 'var(--success, #059669)', color: 'white',
+          padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 500,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+        }}>
+          ✓ {exportToast.friendlyName} is now active on {exportToast.destChainKey}.
+        </div>
+      )}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {navTab === 'wallet' && (
           <DashboardScreen
