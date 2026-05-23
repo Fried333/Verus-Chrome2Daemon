@@ -100,6 +100,54 @@ async function getActiveNativeName(): Promise<string> {
   return nativeFor(key).name;
 }
 
+// Cross-chain identity registry. Every time `listidentities` runs against
+// any active daemon, we snapshot the i-addresses we see into this global
+// map so the UI can offer "you own these IDs on other chains" hints.
+// firstSeenChain is informational; the canonical source of truth for
+// presence is always `getidentity` on the chain in question.
+interface KnownIdentity {
+  iAddress: string;
+  friendlyName: string;
+  primaryAddress: string;
+  firstSeenChain: string;
+  lastSeenAt: number;
+}
+
+async function upsertKnownIdentities(list: any): Promise<void> {
+  if (!Array.isArray(list) || list.length === 0) return;
+  const chainKey = await getActiveChainKey();
+  if (!chainKey) return;
+  const { knownIdentities } = await chrome.storage.local.get(['knownIdentities']);
+  const map: Record<string, KnownIdentity> = knownIdentities || {};
+  const now = Date.now();
+  let changed = false;
+  for (const idObj of list) {
+    const ident = idObj?.identity || idObj;
+    const iAddr = ident?.identityaddress;
+    if (!iAddr || typeof iAddr !== 'string') continue;
+    if (typeof ident?.name === 'string' && ident.name.startsWith('3965555_')) continue;
+    const friendlyName = (idObj?.friendlyname || idObj?.fullyqualifiedname || (ident.name ? ident.name + '@' : iAddr));
+    const primaryAddress = (Array.isArray(ident.primaryaddresses) && ident.primaryaddresses[0]) || '';
+    const prev = map[iAddr];
+    if (!prev || prev.friendlyName !== friendlyName || prev.primaryAddress !== primaryAddress) {
+      map[iAddr] = {
+        iAddress: iAddr,
+        friendlyName,
+        primaryAddress,
+        firstSeenChain: prev?.firstSeenChain || chainKey,
+        lastSeenAt: now,
+      };
+      changed = true;
+    } else if (now - prev.lastSeenAt > 60_000) {
+      // Touch the timestamp at most once per minute so we don't burn storage
+      // writes on every list call.
+      map[iAddr] = { ...prev, lastSeenAt: now };
+      changed = true;
+    }
+  }
+  if (changed) await chrome.storage.local.set({ knownIdentities: map });
+}
+
 async function getActiveSelectedAddress(): Promise<string | null> {
   const key = await getActiveChainKey();
   if (!key) return null;
@@ -373,8 +421,16 @@ async function handleMethod(method: string, params: any): Promise<any> {
     case 'newAddress':
       return callRpc('getnewaddress');
 
-    case 'listIdentities':
-      return callRpc('listidentities');
+    case 'listIdentities': {
+      const list = await callRpc('listidentities');
+      // Snapshot every identity we see on any chain into a global
+      // knownIdentities map. The IDsScreen footer ("N other IDs not on this
+      // chain") subtracts the active-daemon list from this set to find IDs
+      // owned but not yet exported to the current chain. Fire-and-forget;
+      // never block the RPC response on the storage write.
+      upsertKnownIdentities(list).catch(() => {});
+      return list;
+    }
 
     case 'updateIdentity': {
       if (!params?.identity) throw new Error('Identity object required');
@@ -934,7 +990,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     (async () => {
       try {
-        // Defense in depth: re-verify the relying-party signature right
+        // Defense in depth #1: enforce the chain match in the SW too, not
+        // just the popup's disabled button. A deeplink envelope is signed
+        // for a specific systemId; if the user has since switched chains,
+        // signAndDeliverLogin would otherwise dispatch signdata to the
+        // wrong daemon. We fail closed even for unknown active chains —
+        // if we can't resolve activeSystemId, we refuse rather than guess.
+        const linkSystemId: string | null = (dl.parsed as any)?.systemId || null;
+        if (linkSystemId) {
+          const activeKey = await getActiveChainKey();
+          const active = nativeFor(activeKey);
+          if (!active.systemId || active.systemId !== linkSystemId) {
+            throw new Error('Login request is for a different chain than the wallet is currently connected to. Switch chains and re-issue the request.');
+          }
+        }
+        // Defense in depth #2: re-verify the relying-party signature right
         // before signing, in case verification state was tampered with.
         await verifyRequestSignature(dl.parsed, callRpc);
         const result = await signAndDeliverLogin(dl.parsed, identity, callRpc);
@@ -1073,6 +1143,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           lockTimeout: lockTimeoutMs,
         });
       });
+    return true;
+  }
+
+  if (message.type === 'LIST_KNOWN_IDS') {
+    // Returns the union of i-addresses the wallet has seen across any
+    // chain's listidentities. Consumers (IDsScreen footer, future export
+    // flows) subtract this against the active daemon's live list to
+    // surface IDs the user owns but hasn't exported here yet. Presence on
+    // the active chain is always verified via getidentity — this map is a
+    // hint, not authoritative.
+    chrome.storage.local.get(['knownIdentities'], (data) => {
+      sendResponse({ ids: data.knownIdentities || {} });
+    });
     return true;
   }
 

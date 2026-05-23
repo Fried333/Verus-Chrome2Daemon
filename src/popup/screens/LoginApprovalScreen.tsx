@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { IconUser } from '../components/Icons';
+import { nativeFor, CHAIN_NATIVE } from '../../data/chains';
 
 interface DeeplinkInfo {
   id: string;
@@ -29,8 +30,34 @@ export function LoginApprovalScreen({ deeplink, onDone }: Props) {
   const [signing, setSigning] = useState(false);
   const [error, setError] = useState('');
   const [requesterName, setRequesterName] = useState<string>('');
+  // The deeplink envelope encodes the chain it was issued against (systemId,
+  // which is the iaddress of the chain's native currency). We compare it
+  // against the wallet's active chain — signing a challenge issued for
+  // chain A while connected to chain B routes signdata to the wrong daemon.
+  const [activeChain, setActiveChain] = useState<string>('');
+  const [activeSystemId, setActiveSystemId] = useState<string | null>(null);
+  const linkSystemId = deeplink.systemId || null;
+  const expectedChainName = (() => {
+    if (!linkSystemId) return '';
+    for (const [k, v] of Object.entries(CHAIN_NATIVE)) {
+      if (v.systemId === linkSystemId) return k;
+    }
+    return '';
+  })();
+  // Fail closed: if the deeplink carries a systemId but we don't know the
+  // active chain's systemId (custom user-added chain), refuse the approval.
+  // Otherwise a user-added chain with no metadata would let any login
+  // envelope through. The active chain's systemId is null for chains not in
+  // CHAIN_NATIVE.
+  const chainUnknown = !!(linkSystemId && !activeSystemId && activeChain);
+  const chainMismatch = !!(linkSystemId && activeSystemId && linkSystemId !== activeSystemId);
+  const chainBlocked = chainMismatch || chainUnknown;
 
   useEffect(() => {
+    chrome.storage.local.get(['activeChain'], ({ activeChain: ac }) => {
+      setActiveChain(ac || '');
+      setActiveSystemId(nativeFor(ac || null).systemId);
+    });
     loadIdentities();
     // Resolve the relying party's friendly name from its i-address.
     if (deeplink.signingIAddress) {
@@ -140,6 +167,25 @@ export function LoginApprovalScreen({ deeplink, onDone }: Props) {
         )}
       </div>
 
+      {/* Chain mismatch / unknown warning */}
+      {chainBlocked && (
+        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--error)', borderRadius: 8, padding: 12, color: 'var(--error)', fontSize: 12 }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>{chainMismatch ? 'Wrong chain' : 'Cannot verify chain'}</div>
+          {chainMismatch ? (
+            <>
+              This login is for <strong style={{ fontFamily: 'monospace' }}>{expectedChainName || linkSystemId}</strong>.
+              {' '}You are connected to <strong style={{ fontFamily: 'monospace' }}>{activeChain || '(unknown)'}</strong>. Switch chains before approving, or reject this request.
+            </>
+          ) : (
+            <>
+              The active chain <strong style={{ fontFamily: 'monospace' }}>{activeChain}</strong> has no known systemId,
+              so this wallet can't confirm the login envelope is for the chain you are connected to. Switch to a known
+              chain (VRSC / vDEX / vARRR / CHIPS) before approving, or reject this request.
+            </>
+          )}
+        </div>
+      )}
+
       {/* Identity selector */}
       <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
         <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginBottom: 8 }}>Sign in as</div>
@@ -176,8 +222,10 @@ export function LoginApprovalScreen({ deeplink, onDone }: Props) {
       {/* Buttons */}
       <div className="action-buttons" style={{ marginTop: 'auto' }}>
         <button className="btn btn-secondary" onClick={handleReject}>Reject</button>
-        <button className="btn btn-primary" onClick={handleApprove} disabled={signing || !selectedId || loading}>
-          {signing ? 'Signing...' : 'Approve'}
+        <button className="btn btn-primary" onClick={handleApprove}
+          disabled={signing || !selectedId || loading || chainBlocked}
+          title={chainBlocked ? `Switch to ${expectedChainName || 'a known chain'} before approving` : undefined}>
+          {signing ? 'Signing...' : chainMismatch ? 'Chain mismatch' : chainUnknown ? 'Chain unknown' : 'Approve'}
         </button>
       </div>
     </div>
