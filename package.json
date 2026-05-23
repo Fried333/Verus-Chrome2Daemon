@@ -1,6 +1,6 @@
 {
-  "name": "verus-wallet",
-  "version": "5.2.0",
+  "name": "verus-chrome2daemon",
+  "version": "1.0.0",
   "private": true,
   "description": "MetaMask-style Verus wallet extension \u2014 bridges web pages to your local Verus CLI",
   "scripts": {

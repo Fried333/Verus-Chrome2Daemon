@@ -197,7 +197,7 @@ export function App() {
   }
 
   if (screen === 'lock') return <LockScreen isNewUser={!hasPassword} onUnlock={handleUnlock} />;
-  if (screen === 'setup') return <SetupScreen onConnected={testAndGoMain} />;
+  if (screen === 'setup') return <SetupScreen onConnected={testAndGoMain} onBack={() => setScreen('main')} />;
 
   if (screen === 'login-approval' && pendingDeeplinks.length > 0) {
     return <LoginApprovalScreen deeplink={pendingDeeplinks[0]} onDone={() => {
