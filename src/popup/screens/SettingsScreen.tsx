@@ -16,25 +16,50 @@ const TIMEOUT_OPTIONS = [
   { label: '30 minutes', value: 1_800_000 },
 ];
 
+interface ChainCreds {
+  name: string;
+  host: string;
+  port: string;
+  user: string;
+  password: string;
+}
+
 export function SettingsScreen({ address, onBack, onLock, onReconfigure }: Props) {
-  const [rpcHost, setRpcHost] = useState('');
-  const [rpcPort, setRpcPort] = useState('');
+  const [chains, setChains] = useState<Record<string, ChainCreds>>({});
+  const [activeChain, setActiveChain] = useState<string | null>(null);
   const [lockTimeout, setLockTimeout] = useState(300_000);
   const [requirePasswordOnSend, setRequirePasswordOnSend] = useState(true);
   const [pwPrompt, setPwPrompt] = useState(false);
   const [pwInput, setPwInput] = useState('');
   const [pwError, setPwError] = useState('');
 
+  function loadChains() {
+    chrome.runtime.sendMessage({ type: 'GET_CHAINS' }, (resp) => {
+      setChains(resp?.chains || {});
+      setActiveChain(resp?.activeChain || null);
+    });
+  }
+
   useEffect(() => {
-    chrome.storage.local.get(['rpcHost', 'rpcPort', 'requirePasswordOnSend'], (data) => {
-      setRpcHost(data.rpcHost || '127.0.0.1');
-      setRpcPort(data.rpcPort || '27486');
+    chrome.storage.local.get(['requirePasswordOnSend'], (data) => {
       if (data.requirePasswordOnSend === false) setRequirePasswordOnSend(false);
     });
     chrome.runtime.sendMessage({ type: 'GET_STATE' }, (state) => {
       if (state?.lockTimeout) setLockTimeout(state.lockTimeout);
     });
+    loadChains();
   }, []);
+
+  function switchChain(key: string) {
+    chrome.runtime.sendMessage({ type: 'SET_ACTIVE_CHAIN', key }, () => loadChains());
+  }
+
+  function removeChain(key: string) {
+    if (!confirm(`Remove chain "${key}"? Credentials will be deleted.`)) return;
+    chrome.runtime.sendMessage({ type: 'DELETE_CHAIN', key }, () => loadChains());
+  }
+
+  const active = activeChain ? chains[activeChain] : null;
 
   function handleTimeoutChange(value: number) {
     setLockTimeout(value);
@@ -49,14 +74,43 @@ export function SettingsScreen({ address, onBack, onLock, onReconfigure }: Props
       <h2>Settings</h2>
 
       <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Daemon Connection</div>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Host</span><span style={{ fontFamily: 'monospace' }}>{rpcHost}</span></div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Port</span><span style={{ fontFamily: 'monospace' }}>{rpcPort}</span></div>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Chain</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+          {Object.keys(chains).length === 0 && (
+            <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>No chains configured yet.</span>
+          )}
+          {Object.keys(chains).map((key) => {
+            const isActive = key === activeChain;
+            return (
+              <button key={key}
+                onClick={() => !isActive && switchChain(key)}
+                style={{
+                  fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
+                  background: isActive ? 'var(--accent)' : 'var(--bg-tertiary)',
+                  color: isActive ? 'white' : 'var(--text-secondary)',
+                  cursor: isActive ? 'default' : 'pointer', fontFamily: 'monospace',
+                }}>
+                {key}
+              </button>
+            );
+          })}
         </div>
-        <button className="btn-text" onClick={onReconfigure} style={{ fontSize: 12, marginTop: 6, padding: 0 }}>
-          Reconfigure →
-        </button>
+        {active && (
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Host</span><span style={{ fontFamily: 'monospace' }}>{active.host}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Port</span><span style={{ fontFamily: 'monospace' }}>{active.port}</span></div>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
+          <button className="btn-text" onClick={onReconfigure} style={{ fontSize: 12, padding: 0 }}>
+            Add / edit chain →
+          </button>
+          {activeChain && (
+            <button className="btn-text" onClick={() => removeChain(activeChain)} style={{ fontSize: 12, padding: 0, color: 'var(--error)' }}>
+              Remove {activeChain}
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
@@ -172,7 +226,7 @@ export function SettingsScreen({ address, onBack, onLock, onReconfigure }: Props
       <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>About</div>
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Version</span><span style={{ fontFamily: 'monospace' }}>0.1.0</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Version</span><span style={{ fontFamily: 'monospace' }}>1.0.0</span></div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Architecture</span><span>Direct RPC</span></div>
         </div>
       </div>

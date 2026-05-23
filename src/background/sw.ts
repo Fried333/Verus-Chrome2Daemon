@@ -149,12 +149,52 @@ async function setPassword(password: string): Promise<void> {
 
 // === RPC Client ===
 
+// Per-chain creds. Each chain has its own daemon — the active chain decides
+// which one we talk to. The daemon owns chain-specific concerns (fees,
+// currency rules); the extension just routes RPC to the right host.
+interface ChainCreds {
+  name: string;       // Display label shown in the UI (e.g. "VRSC", "vDEX")
+  host: string;
+  port: string;
+  user: string;
+  password: string;
+}
+type ChainsMap = Record<string, ChainCreds>;
+
+// One-shot migration from the single-chain shape (rpcHost/rpcPort/...) to the
+// per-chain shape. Runs once on first read after upgrade and then leaves the
+// old keys removed.
+async function migrateLegacyRpcConfig(): Promise<void> {
+  const data = await chrome.storage.local.get([
+    'chains', 'activeChain', 'rpcHost', 'rpcPort', 'rpcUser', 'rpcPassword',
+  ]);
+  if (data.chains) return;
+  if (!data.rpcUser || !data.rpcPassword) return;
+  const chains: ChainsMap = {
+    VRSC: {
+      name: 'VRSC',
+      host: data.rpcHost || '127.0.0.1',
+      port: data.rpcPort || '27486',
+      user: data.rpcUser,
+      password: data.rpcPassword,
+    },
+  };
+  await chrome.storage.local.set({ chains, activeChain: 'VRSC' });
+  await chrome.storage.local.remove(['rpcHost', 'rpcPort', 'rpcUser', 'rpcPassword']);
+}
+
 async function getRpcConfig(): Promise<{ url: string; user: string; pass: string } | null> {
-  const data = await chrome.storage.local.get(['rpcHost', 'rpcPort', 'rpcUser', 'rpcPassword']);
-  if (!data.rpcUser || !data.rpcPassword) return null;
-  const host = data.rpcHost || '127.0.0.1';
-  const port = data.rpcPort || '27486';
-  return { url: `http://${host}:${port}`, user: data.rpcUser, pass: data.rpcPassword };
+  await migrateLegacyRpcConfig();
+  const data = await chrome.storage.local.get(['chains', 'activeChain']);
+  const chains: ChainsMap = data.chains || {};
+  const activeKey: string | undefined = data.activeChain;
+  const chain = activeKey ? chains[activeKey] : undefined;
+  if (!chain || !chain.user || !chain.password) return null;
+  return {
+    url: `http://${chain.host || '127.0.0.1'}:${chain.port || '27486'}`,
+    user: chain.user,
+    pass: chain.password,
+  };
 }
 
 async function callRpc(method: string, params: any[] = []): Promise<any> {
@@ -898,27 +938,123 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'GET_STATE') {
-    chrome.storage.local.get(['passwordHash', 'rpcUser'], (data) => {
-      sendResponse({
-        connectedAddress,
-        isUnlocked,
-        hasPassword: !!data.passwordHash,
-        hasRpcConfig: !!data.rpcUser,
-        lockTimeout: lockTimeoutMs,
+    migrateLegacyRpcConfig()
+      .catch(() => {})
+      .then(() => chrome.storage.local.get(['passwordHash', 'chains', 'activeChain']))
+      .then((data) => {
+        const chains: ChainsMap = data.chains || {};
+        const activeKey: string | undefined = data.activeChain;
+        const active = activeKey ? chains[activeKey] : undefined;
+        sendResponse({
+          connectedAddress,
+          isUnlocked,
+          hasPassword: !!data.passwordHash,
+          hasRpcConfig: !!(active && active.user && active.password),
+          activeChain: activeKey || null,
+          chainKeys: Object.keys(chains),
+          lockTimeout: lockTimeoutMs,
+        });
       });
+    return true;
+  }
+
+  if (message.type === 'GET_CHAINS') {
+    migrateLegacyRpcConfig()
+      .catch(() => {})
+      .then(() => chrome.storage.local.get(['chains', 'activeChain']))
+      .then((data) => {
+        sendResponse({
+          chains: data.chains || {},
+          activeChain: data.activeChain || null,
+        });
+      });
+    return true;
+  }
+
+  if (message.type === 'SAVE_CHAIN') {
+    // Upserts a chain entry and (optionally) makes it active.
+    const key: string = (message.key || '').trim();
+    if (!key) { sendResponse({ ok: false, error: 'Missing chain key' }); return; }
+    chrome.storage.local.get(['chains', 'activeChain'], (data) => {
+      const chains: ChainsMap = data.chains || {};
+      chains[key] = {
+        name: message.name || key,
+        host: message.host || '127.0.0.1',
+        port: message.port || '27486',
+        user: message.user || '',
+        password: message.password || '',
+      };
+      const updates: Record<string, unknown> = { chains };
+      if (message.activate || !data.activeChain) updates.activeChain = key;
+      chrome.storage.local.set(updates, () => sendResponse({ ok: true }));
     });
     return true;
   }
 
-  if (message.type === 'SAVE_RPC_CONFIG') {
-    chrome.storage.local.set({
-      rpcHost: message.host || '127.0.0.1',
-      rpcPort: message.port || '27486',
-      rpcUser: message.user,
-      rpcPassword: message.password,
+  if (message.type === 'PROBE_CHAIN') {
+    // Best-effort liveness check: fetch the RPC port unauthenticated.
+    // A live daemon answers with 401 (auth required). A dead/missing one
+    // fails with a network error. We don't care about the body.
+    const host: string = message.host || '127.0.0.1';
+    const port: string = message.port || '';
+    if (!port) { sendResponse({ alive: false }); return; }
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 1500);
+    fetch(`http://${host}:${port}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '1.0', id: 1, method: 'getinfo', params: [] }),
+      signal: controller.signal,
+    })
+      .then((res) => { clearTimeout(t); sendResponse({ alive: res.status === 401 || res.ok }); })
+      .catch(() => { clearTimeout(t); sendResponse({ alive: false }); });
+    return true;
+  }
+
+  if (message.type === 'SET_ACTIVE_CHAIN') {
+    const key: string = (message.key || '').trim();
+    if (!key) { sendResponse({ ok: false, error: 'Missing chain key' }); return; }
+    chrome.storage.local.get(['chains'], (data) => {
+      const chains: ChainsMap = data.chains || {};
+      if (!chains[key]) { sendResponse({ ok: false, error: 'Unknown chain' }); return; }
+      chrome.storage.local.set({ activeChain: key }, () => sendResponse({ ok: true }));
     });
-    sendResponse({ ok: true });
-    return;
+    return true;
+  }
+
+  if (message.type === 'DELETE_CHAIN') {
+    const key: string = (message.key || '').trim();
+    if (!key) { sendResponse({ ok: false, error: 'Missing chain key' }); return; }
+    chrome.storage.local.get(['chains', 'activeChain'], (data) => {
+      const chains: ChainsMap = data.chains || {};
+      delete chains[key];
+      const updates: Record<string, unknown> = { chains };
+      if (data.activeChain === key) {
+        const remaining = Object.keys(chains);
+        updates.activeChain = remaining[0] || null;
+      }
+      chrome.storage.local.set(updates, () => sendResponse({ ok: true }));
+    });
+    return true;
+  }
+
+  // Legacy single-chain setup shim — kept so SetupScreen.tsx can call its
+  // existing message without changing its UX. Writes into the chains map
+  // under the provided key (or "VRSC" by default) and activates it.
+  if (message.type === 'SAVE_RPC_CONFIG') {
+    const key: string = (message.key || 'VRSC').trim();
+    chrome.storage.local.get(['chains'], (data) => {
+      const chains: ChainsMap = data.chains || {};
+      chains[key] = {
+        name: message.name || key,
+        host: message.host || '127.0.0.1',
+        port: message.port || '27486',
+        user: message.user || '',
+        password: message.password || '',
+      };
+      chrome.storage.local.set({ chains, activeChain: key }, () => sendResponse({ ok: true }));
+    });
+    return true;
   }
 
   if (message.type === 'UNLOCK') {

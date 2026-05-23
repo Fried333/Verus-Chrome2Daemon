@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Verus Wallet",
-  "version": "5.2.0",
+  "name": "Verus-Chrome2Daemon",
+  "version": "1.0.0",
   "description": "Connect websites to your local Verus wallet. Approve transactions, check balances, and manage VerusIDs — all signed by your local daemon.",
   "permissions": [
     "storage",
