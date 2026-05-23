@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { IconBack } from '../components/Icons';
+import { nativeFor } from '../../data/chains';
 
 interface Props {
   address: string;
@@ -20,6 +21,7 @@ export function SendScreen({ address, defaultCurrency, onBack, onSent }: Props) 
   const [step, setStep] = useState<Step>('input');
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
+  const [nativeName, setNativeName] = useState<string>('VRSC');
   const [currency, setCurrency] = useState(defaultCurrency || 'VRSC');
   const [memo, setMemo] = useState('');
   const isZAddress = recipient.trim().startsWith('zs') || recipient.trim().startsWith('zc');
@@ -34,10 +36,15 @@ export function SendScreen({ address, defaultCurrency, onBack, onSent }: Props) 
   const [requirePassword, setRequirePassword] = useState(true);
 
   useEffect(() => {
-    chrome.storage.local.get(['requirePasswordOnSend'], (data) => {
+    chrome.storage.local.get(['requirePasswordOnSend', 'activeChain'], (data) => {
       if (data.requirePasswordOnSend === false) setRequirePassword(false);
+      const n = nativeFor(data.activeChain || null).name;
+      setNativeName(n);
+      // If the caller didn't override the default, use the active chain's
+      // native instead of a hardcoded VRSC.
+      if (!defaultCurrency) setCurrency(n);
     });
-  }, []);
+  }, [defaultCurrency]);
 
   // Load own addresses + IDs (same filter as account selector)
   useEffect(() => {
@@ -46,11 +53,14 @@ export function SendScreen({ address, defaultCurrency, onBack, onSent }: Props) 
       if (!resp?.result || !Array.isArray(resp.result)) return;
       const addrs = resp.result as string[];
 
-      const nameKeys = addrs.map((a: string) => 'accountName:' + a);
+      const { activeChain } = await chrome.storage.local.get(['activeChain']);
+      const chainKey: string = activeChain || 'VRSC';
+      const nameKeys = addrs.map((a: string) => `accountName:${chainKey}:${a}`);
       const stored: Record<string, any> = await new Promise(resolve => {
-        chrome.storage.local.get([...nameKeys, 'pinnedAddresses'], (data) => resolve(data));
+        chrome.storage.local.get([...nameKeys, `pinnedAddresses:${chainKey}`], (data) => resolve(data));
       });
-      const pinned = new Set(Object.keys(stored.pinnedAddresses || {}).filter(k => stored.pinnedAddresses[k]));
+      const pinnedMap = stored[`pinnedAddresses:${chainKey}`] || {};
+      const pinned = new Set(Object.keys(pinnedMap).filter(k => pinnedMap[k]));
 
       const results: Array<{ address: string; name: string }> = [];
 
@@ -61,7 +71,7 @@ export function SendScreen({ address, defaultCurrency, onBack, onSent }: Props) 
         const br = await rpc('getBalance', { address: a });
         const hasBalance = br?.result?.currencybalance && Object.values(br.result.currencybalance).some((v: any) => Number(v) > 0);
         if (hasBalance || pinned.has(a) || i === 0) {
-          results.push({ address: a, name: stored['accountName:' + a] || `Account ${i + 1}` });
+          results.push({ address: a, name: stored[`accountName:${chainKey}:${a}`] || `Account ${i + 1}` });
         }
       }
 
@@ -144,7 +154,7 @@ export function SendScreen({ address, defaultCurrency, onBack, onSent }: Props) 
     }
     try {
       const params: any = { from: address, to: resolvedAddr || recipient.trim(), amount: parseFloat(amount) };
-      if (currency !== 'VRSC') params.currency = currency;
+      if (currency !== nativeName) params.currency = currency;
       if (memo && isZAddress) params.memo = memo;
       const resp = await rpc('sendCurrency', params);
       if (resp?.error) throw new Error(resp.error);
@@ -163,7 +173,7 @@ export function SendScreen({ address, defaultCurrency, onBack, onSent }: Props) 
             confirmations: 0,
             time: Math.floor(Date.now() / 1000),
             currencyTransfers: [],
-            currency: currency !== 'VRSC' ? currency : undefined,
+            currency: currency !== nativeName ? currency : undefined,
           },
         });
       }
@@ -271,7 +281,7 @@ export function SendScreen({ address, defaultCurrency, onBack, onSent }: Props) 
         <label className="input-label">Amount</label>
         {balance !== null && (
           <span
-            onClick={() => { const fee = currency === 'VRSC' ? 0.0001 : 0; setAmount(String(Math.max(0, parseFloat(balance) - fee).toFixed(8))); }}
+            onClick={() => { const fee = currency === nativeName ? 0.0001 : 0; setAmount(String(Math.max(0, parseFloat(balance) - fee).toFixed(8))); }}
             style={{ fontSize: 11, color: 'var(--accent)', cursor: 'pointer' }}
             title="Click to use max amount"
           >
@@ -283,7 +293,7 @@ export function SendScreen({ address, defaultCurrency, onBack, onSent }: Props) 
         <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)}
           placeholder="0.00000000" style={{ flex: 1, fontFamily: 'monospace' }} />
         <input type="text" value={currency} onChange={(e) => setCurrency(e.target.value)}
-          placeholder="VRSC" style={{ width: 80 }} />
+          placeholder={nativeName} style={{ width: 80 }} />
       </div>
 
       {isZAddress && (

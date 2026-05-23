@@ -6,6 +6,7 @@
 
 import { parseDeeplink, signAndDeliverLogin, verifyRequestSignature } from './login-handler';
 import type { ParsedLoginRequest } from './login-handler';
+import { nativeFor } from '../data/chains';
 
 // === VerusSub Helpers ===
 function hexToUtf8(hex: string): string {
@@ -65,6 +66,13 @@ interface PendingApproval {
   method: string;
   params: any;
   origin: string;
+  // Snapshot of the active chain at the moment the page request arrived.
+  // Both the daemon target (via callRpc) and the fallback address (via
+  // getActiveSelectedAddress) resolve dynamically from current chain state,
+  // so without this binding a user who switches chains between the request
+  // and the approval could sign a tx against the wrong daemon. Validated in
+  // POPUP_APPROVE before execution.
+  chainKey: string | null;
   // Optional pre-fetched context the popup approval UI can render. Currently
   // used for updateIdentity to diff the requested change against the current
   // on-chain state.
@@ -74,19 +82,42 @@ interface PendingApproval {
 }
 
 let pendingApprovals: PendingApproval[] = [];
-let connectedAddress: string | null = null;
+// Per-chain selected address. The previously-single connectedAddress has been
+// fanned out by chain key because R-addresses are wallet-local per daemon
+// and i-addresses can exist on multiple chains as separate ledger states.
+let selectedAddressByChain: Record<string, string | null> = {};
 let isUnlocked = false;
 let lockTimer: ReturnType<typeof setTimeout> | null = null;
 let lockTimeoutMs = 5 * 60 * 1000; // Default: 5 minutes
 
+async function getActiveChainKey(): Promise<string | null> {
+  const data = await chrome.storage.local.get(['activeChain']);
+  return data.activeChain || null;
+}
+
+async function getActiveNativeName(): Promise<string> {
+  const key = await getActiveChainKey();
+  return nativeFor(key).name;
+}
+
+async function getActiveSelectedAddress(): Promise<string | null> {
+  const key = await getActiveChainKey();
+  if (!key) return null;
+  if (selectedAddressByChain[key] !== undefined) return selectedAddressByChain[key];
+  const data = await chrome.storage.local.get([`selectedAddress:${key}`]);
+  const addr = data[`selectedAddress:${key}`] || null;
+  selectedAddressByChain[key] = addr;
+  return addr;
+}
+
+function getActiveChainMeta(activeKey: string | null): { nativeName: string | null; nativeIAddress: string | null; systemId: string | null } {
+  const meta = nativeFor(activeKey);
+  return { nativeName: meta.name, nativeIAddress: meta.iaddress, systemId: meta.systemId };
+}
+
 // Load saved lock timeout
 chrome.storage.local.get(['lockTimeout'], (data) => {
   if (data.lockTimeout) lockTimeoutMs = data.lockTimeout;
-});
-
-// Load saved state
-chrome.storage.local.get(['connectedAddress'], (data) => {
-  connectedAddress = data.connectedAddress || null;
 });
 
 // Open side panel when clicking the extension icon (like MetaMask)
@@ -183,6 +214,50 @@ async function migrateLegacyRpcConfig(): Promise<void> {
   await chrome.storage.local.remove(['rpcHost', 'rpcPort', 'rpcUser', 'rpcPassword']);
 }
 
+// Migration v2: address-keyed storage gets chain-prefixed. Pre-PR users had
+// only one chain so we attribute everything to whatever activeChain is.
+// Idempotent via the `storageVersion` sentinel.
+async function migrateAddressKeysV2(): Promise<void> {
+  const sentinel = await chrome.storage.local.get(['storageVersion']);
+  if ((sentinel.storageVersion || 0) >= 2) return;
+  const { activeChain } = await chrome.storage.local.get(['activeChain']);
+  if (!activeChain) {
+    // No chain set up yet — nothing to migrate; just bump the sentinel so we
+    // don't keep checking.
+    await chrome.storage.local.set({ storageVersion: 2 });
+    return;
+  }
+  const all = await chrome.storage.local.get(null);
+  const updates: Record<string, unknown> = { storageVersion: 2 };
+  const deletes: string[] = [];
+  for (const k of Object.keys(all)) {
+    if (k === 'connectedAddress') {
+      updates[`selectedAddress:${activeChain}`] = all[k];
+      deletes.push(k);
+    } else if (k.startsWith('accountName:') && !k.startsWith(`accountName:${activeChain}:`)) {
+      // Rewrite `accountName:<addr>` → `accountName:<chainKey>:<addr>`.
+      // Skip keys that already look chain-prefixed in case a re-run hits a
+      // partial migration.
+      const rest = k.slice('accountName:'.length);
+      if (!rest.includes(':')) {
+        updates[`accountName:${activeChain}:${rest}`] = all[k];
+        deletes.push(k);
+      }
+    } else if (k.startsWith('pendingTxs:') && !k.startsWith(`pendingTxs:${activeChain}:`)) {
+      const rest = k.slice('pendingTxs:'.length);
+      if (!rest.includes(':')) {
+        updates[`pendingTxs:${activeChain}:${rest}`] = all[k];
+        deletes.push(k);
+      }
+    } else if (k === 'pinnedAddresses') {
+      updates[`pinnedAddresses:${activeChain}`] = all[k];
+      deletes.push(k);
+    }
+  }
+  await chrome.storage.local.set(updates);
+  if (deletes.length) await chrome.storage.local.remove(deletes);
+}
+
 async function getRpcConfig(): Promise<{ url: string; user: string; pass: string } | null> {
   await migrateLegacyRpcConfig();
   const data = await chrome.storage.local.get(['chains', 'activeChain']);
@@ -231,7 +306,7 @@ async function handleMethod(method: string, params: any): Promise<any> {
     }
 
     case 'getBalance': {
-      const addr = params?.address || connectedAddress;
+      const addr = params?.address || (await getActiveSelectedAddress());
       if (!addr) throw new Error('No address');
       return callRpc('getaddressbalance', [{ addresses: [addr], friendlynames: true }]);
     }
@@ -252,14 +327,15 @@ async function handleMethod(method: string, params: any): Promise<any> {
     }
 
     case 'getUtxos': {
-      const addr = params?.address || connectedAddress;
+      const addr = params?.address || (await getActiveSelectedAddress());
       if (!addr) throw new Error('No address');
       return callRpc('getaddressutxos', [{ addresses: [addr] }]);
     }
 
     case 'sendCurrency': {
-      if (!params?.from && !connectedAddress) throw new Error('No from address');
-      const fromAddr = params.from || connectedAddress;
+      const fallbackFrom = await getActiveSelectedAddress();
+      if (!params?.from && !fallbackFrom) throw new Error('No from address');
+      const fromAddr = params.from || fallbackFrom;
 
       // Page-callable sendCurrency is single-output only. The approval UI
       // renders a fixed set of fields and a sneaky `outputs[]` array could
@@ -289,7 +365,7 @@ async function handleMethod(method: string, params: any): Promise<any> {
 
     case 'signMessage': {
       if (!params?.message) throw new Error('Message required');
-      const identity = params.identity || connectedAddress;
+      const identity = params.identity || (await getActiveSelectedAddress());
       if (!identity) throw new Error('No identity');
       return callRpc('signmessage', [identity, params.message]);
     }
@@ -399,22 +475,25 @@ async function handleMethod(method: string, params: any): Promise<any> {
       };
 
       // Use the address the user selected in the approval screen
-      const fromAddr = params.from || connectedAddress;
+      const fromAddr = params.from || (await getActiveSelectedAddress());
       if (!fromAddr) throw new Error('No source address');
 
       // 2. Use pre-generated address or create new one
       const dedicated = params.dedicatedAddress || await callRpc('getnewaddress', []);
 
       // 3. Fund with N UTXOs
-      // For non-VRSC: interleave currency + VRSC fee outputs (currency at even vouts, VRSC at odd)
-      const planCurr = plan.currency || 'VRSC';
+      // For non-native: interleave currency + native fee outputs (currency at
+      // even vouts, native at odd). "Native" means the active chain's own
+      // currency — VRSC on VRSC, vARRR on vARRR, etc.
+      const nativeName = await getActiveNativeName();
+      const planCurr = plan.currency || nativeName;
       const fundOutputs: any[] = [];
       for (let i = 0; i < plan.periods; i++) {
-        if (planCurr === 'VRSC') {
+        if (planCurr === nativeName) {
           fundOutputs.push({ address: dedicated, amount: plan.amount });
         } else {
           fundOutputs.push({ address: dedicated, amount: plan.amount, currency: planCurr });
-          fundOutputs.push({ address: dedicated, amount: 0.0001 }); // VRSC for this period's broadcast fee
+          fundOutputs.push({ address: dedicated, amount: 0.0001 }); // native fee for this period's broadcast
         }
       }
       sendProgress('Funding dedicated address...');
@@ -432,9 +511,9 @@ async function handleMethod(method: string, params: any): Promise<any> {
       }
       if (!fundingTxid) throw new Error('Funding timed out');
 
-      // 4. For non-VRSC currencies, must wait for confirmation before signing
-      // (VRSC UTXOs can be signed unconfirmed, currency UTXOs cannot)
-      if (planCurr !== 'VRSC') {
+      // 4. For non-native currencies, must wait for confirmation before signing
+      // (native UTXOs can be signed unconfirmed; reserve currency UTXOs cannot)
+      if (planCurr !== nativeName) {
         sendProgress('Waiting for funding confirmation...');
         let confirmed = false;
         for (let i = 0; i < 90; i++) { // ~7.5 minutes max
@@ -450,13 +529,13 @@ async function handleMethod(method: string, params: any): Promise<any> {
       const info = await callRpc('getinfo', []);
       const currentBlock = info.blocks;
       const expiry = currentBlock + 500000;
-      const planCurrency = plan.currency || 'VRSC';
-      // For VRSC: deduct fee from payment. For other currencies: fee is paid in VRSC separately
-      const payment = planCurrency === 'VRSC' ? plan.amount - 0.0001 : plan.amount;
+      const planCurrency = plan.currency || nativeName;
+      // For native: deduct fee from payment. Otherwise: fee paid separately in native.
+      const payment = planCurrency === nativeName ? plan.amount - 0.0001 : plan.amount;
 
-      // For non-VRSC currencies, resolve the currency name to i-address
+      // For non-native currencies, resolve the currency name to i-address
       let currencyId = '';
-      if (planCurrency !== 'VRSC') {
+      if (planCurrency !== nativeName) {
         const currInfo = await callRpc('getcurrency', [planCurrency]);
         if (currInfo?.currencyid) currencyId = currInfo.currencyid;
         else throw new Error(`Currency ${planCurrency} not found`);
@@ -476,11 +555,11 @@ async function handleMethod(method: string, params: any): Promise<any> {
         let inputs: any[];
         let output: any;
 
-        if (planCurrency === 'VRSC') {
+        if (planCurrency === nativeName) {
           inputs = [{ txid: fundingTxid, vout: i }];
           output = { [payAddr]: payment };
         } else {
-          // Non-VRSC: currency at vout i*2, VRSC fee at vout i*2+1
+          // Non-native: currency at vout i*2, native fee at vout i*2+1
           const currVout = i * 2;
           const feeVout = i * 2 + 1;
           inputs = [
@@ -511,7 +590,7 @@ async function handleMethod(method: string, params: any): Promise<any> {
       // 6. Build subscription payload
       // On-chain payload is lightweight (no transactions) to stay within contentmultimap size limits.
       // Signed transactions are returned to the caller and sent directly to the broadcast server.
-      const subscriberId = params.subscriberId || connectedAddress;
+      const subscriberId = params.subscriberId || (await getActiveSelectedAddress());
       const payload = {
         version: 2,
         providerId: params.provider,
@@ -522,7 +601,7 @@ async function handleMethod(method: string, params: any): Promise<any> {
         intervalBlocks: plan.intervalBlocks,
         totalPeriods: plan.periods,
         paymentAmount: payment,
-        currency: plan.currency || 'VRSC',
+        currency: plan.currency || nativeName,
       };
 
       // 7. Store in subscriber's contentmultimap (if subscriberId is an identity)
@@ -616,14 +695,15 @@ async function handleMethod(method: string, params: any): Promise<any> {
         intervalBlocks: plan.intervalBlocks,
         totalPeriods: plan.periods,
         paymentAmount: payment,
-        currency: plan.currency || 'VRSC',
+        currency: plan.currency || nativeName,
         transactions,
       };
     }
 
     case 'cancelSubscription': {
       if (!params?.provider) throw new Error('provider required');
-      const subscriberId = params.subscriberId || connectedAddress;
+      const subscriberFallback = await getActiveSelectedAddress();
+      const subscriberId = params.subscriberId || subscriberFallback;
       if (!subscriberId) throw new Error('No subscriber identity');
 
       // Read subscription from subscriber's contentmultimap
@@ -657,7 +737,7 @@ async function handleMethod(method: string, params: any): Promise<any> {
         const totalSat = utxos.reduce((sum: number, u: any) => sum + u.satoshis, 0);
         const sweepAmount = (totalSat / 1e8) - 0.0001;
         if (sweepAmount > 0) {
-          const sweepAddr = subIdentity.identity.primaryaddresses?.[0] || connectedAddress;
+          const sweepAddr = subIdentity.identity.primaryaddresses?.[0] || subscriberFallback;
           const sweepOpid = await callRpc('sendcurrency', [dedicated, [{ address: sweepAddr, amount: sweepAmount }]]);
           for (let i = 0; i < 30; i++) {
             await new Promise(r => setTimeout(r, 1000));
@@ -682,7 +762,7 @@ async function handleMethod(method: string, params: any): Promise<any> {
     }
 
     case 'getAddressTxids': {
-      const addr = params?.address || connectedAddress;
+      const addr = params?.address || (await getActiveSelectedAddress());
       if (!addr) throw new Error('No address');
       return callRpc('getaddresstxids', [{ addresses: [addr] }]);
     }
@@ -773,7 +853,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'GET_PENDING') {
-    const pending = pendingApprovals.map(p => ({ id: p.id, method: p.method, params: p.params, origin: p.origin, context: p.context }));
+    const pending = pendingApprovals.map(p => ({ id: p.id, method: p.method, params: p.params, origin: p.origin, context: p.context, chainKey: p.chainKey }));
     // Only surface deeplinks whose relying-party signature has been verified.
     // Unverified entries are still being checked or were just admitted under
     // a locked wallet; either way, the UI should never display an unverified
@@ -804,13 +884,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       pendingSubscriptions.delete(id);
       subscriptionCallbacks.delete(id);
       // Wait for execution to complete before responding — keeps service worker alive
-      handleMethod('executeSubscription', {
+      getActiveSelectedAddress().then((fallback) => handleMethod('executeSubscription', {
         provider: sub.provider,
         plan: sub.plan,
-        from: msgFrom || connectedAddress,
+        from: msgFrom || fallback,
         dedicatedAddress: dedAddr,
         subscriberId: msgSubId || sub.subscriberId,
-      }).then(result => {
+      })).then(result => {
         cb.resolve(result);
         chrome.action.setBadgeText({ text: '' });
         sendResponse({ ok: true, result });
@@ -887,70 +967,108 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'SET_ADDRESS') {
-    connectedAddress = message.address;
-    chrome.storage.local.set({ connectedAddress: message.address });
-    sendResponse({ ok: true });
-    return;
+    // Address selection is per-chain. The caller may pass chainKey explicitly
+    // (race-safe against a concurrent chain switch); otherwise we use the
+    // currently active chain.
+    (async () => {
+      const chainKey: string | null = message.chainKey || (await getActiveChainKey());
+      if (!chainKey) { sendResponse({ ok: false, error: 'No active chain' }); return; }
+      selectedAddressByChain[chainKey] = message.address || null;
+      await chrome.storage.local.set({ [`selectedAddress:${chainKey}`]: message.address || null });
+      sendResponse({ ok: true });
+    })();
+    return true;
   }
 
   if (message.type === 'SET_ACCOUNT_NAME') {
-    const key = 'accountName:' + message.address;
-    chrome.storage.local.set({ [key]: message.name });
-    sendResponse({ ok: true });
-    return;
+    (async () => {
+      const chainKey: string | null = message.chainKey || (await getActiveChainKey());
+      if (!chainKey) { sendResponse({ ok: false, error: 'No active chain' }); return; }
+      const key = `accountName:${chainKey}:${message.address}`;
+      await chrome.storage.local.set({ [key]: message.name });
+      sendResponse({ ok: true });
+    })();
+    return true;
   }
 
   if (message.type === 'GET_ACCOUNT_NAME') {
-    const key = 'accountName:' + message.address;
-    chrome.storage.local.get([key], (data) => {
+    (async () => {
+      const chainKey: string | null = message.chainKey || (await getActiveChainKey());
+      if (!chainKey) { sendResponse({ name: '' }); return; }
+      const key = `accountName:${chainKey}:${message.address}`;
+      const data = await chrome.storage.local.get([key]);
       sendResponse({ name: data[key] || '' });
-    });
+    })();
     return true;
   }
 
   if (message.type === 'ADD_PENDING_TX') {
-    const key = 'pendingTxs:' + message.address;
-    chrome.storage.local.get([key], (data) => {
+    (async () => {
+      const chainKey: string | null = message.chainKey || (await getActiveChainKey());
+      if (!chainKey) { sendResponse({ ok: false, error: 'No active chain' }); return; }
+      const key = `pendingTxs:${chainKey}:${message.address}`;
+      const data = await chrome.storage.local.get([key]);
       const existing = data[key] || [];
       existing.unshift(message.tx);
-      chrome.storage.local.set({ [key]: existing.slice(0, 10) });
+      await chrome.storage.local.set({ [key]: existing.slice(0, 10) });
       sendResponse({ ok: true });
-    });
+    })();
     return true;
   }
 
   if (message.type === 'GET_PENDING_TXS') {
-    const key = 'pendingTxs:' + message.address;
-    chrome.storage.local.get([key], (data) => {
+    (async () => {
+      const chainKey: string | null = message.chainKey || (await getActiveChainKey());
+      if (!chainKey) { sendResponse({ txs: [] }); return; }
+      const key = `pendingTxs:${chainKey}:${message.address}`;
+      const data = await chrome.storage.local.get([key]);
       sendResponse({ txs: data[key] || [] });
-    });
+    })();
     return true;
   }
 
   if (message.type === 'CLEAR_CONFIRMED_PENDING') {
-    const key = 'pendingTxs:' + message.address;
-    chrome.storage.local.get([key], (data) => {
+    (async () => {
+      const chainKey: string | null = message.chainKey || (await getActiveChainKey());
+      if (!chainKey) { sendResponse({ ok: false, error: 'No active chain' }); return; }
+      const key = `pendingTxs:${chainKey}:${message.address}`;
+      const data = await chrome.storage.local.get([key]);
       const pending = (data[key] || []).filter((tx: any) => !message.confirmedTxids.includes(tx.txid));
-      chrome.storage.local.set({ [key]: pending });
+      await chrome.storage.local.set({ [key]: pending });
       sendResponse({ ok: true });
-    });
+    })();
     return true;
   }
 
   if (message.type === 'GET_STATE') {
     migrateLegacyRpcConfig()
       .catch(() => {})
+      .then(() => migrateAddressKeysV2().catch(() => {}))
       .then(() => chrome.storage.local.get(['passwordHash', 'chains', 'activeChain']))
-      .then((data) => {
+      .then(async (data) => {
         const chains: ChainsMap = data.chains || {};
         const activeKey: string | undefined = data.activeChain;
         const active = activeKey ? chains[activeKey] : undefined;
+        // Read the selected address for the active chain (fall back to a fresh
+        // storage read if the in-memory cache is empty for this key — happens
+        // on SW restart before any popup interaction).
+        let selectedAddress: string | null = null;
+        if (activeKey) {
+          if (selectedAddressByChain[activeKey] !== undefined) {
+            selectedAddress = selectedAddressByChain[activeKey];
+          } else {
+            const sa = await chrome.storage.local.get([`selectedAddress:${activeKey}`]);
+            selectedAddress = sa[`selectedAddress:${activeKey}`] || null;
+            selectedAddressByChain[activeKey] = selectedAddress;
+          }
+        }
         sendResponse({
-          connectedAddress,
+          connectedAddress: selectedAddress,
           isUnlocked,
           hasPassword: !!data.passwordHash,
           hasRpcConfig: !!(active && active.user && active.password),
           activeChain: activeKey || null,
+          activeChainMeta: getActiveChainMeta(activeKey || null),
           chainKeys: Object.keys(chains),
           lockTimeout: lockTimeoutMs,
         });
@@ -985,8 +1103,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         password: message.password || '',
       };
       const updates: Record<string, unknown> = { chains };
-      if (message.activate || !data.activeChain) updates.activeChain = key;
-      chrome.storage.local.set(updates, () => sendResponse({ ok: true }));
+      const willActivate = message.activate || !data.activeChain;
+      if (willActivate) updates.activeChain = key;
+      chrome.storage.local.set(updates, () => {
+        if (willActivate) chrome.runtime.sendMessage({ type: 'WALLET_CHAIN_CHANGED', key }).catch(() => {});
+        sendResponse({ ok: true });
+      });
     });
     return true;
   }
@@ -1017,7 +1139,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.storage.local.get(['chains'], (data) => {
       const chains: ChainsMap = data.chains || {};
       if (!chains[key]) { sendResponse({ ok: false, error: 'Unknown chain' }); return; }
-      chrome.storage.local.set({ activeChain: key }, () => sendResponse({ ok: true }));
+      chrome.storage.local.set({ activeChain: key }, () => {
+        // Tell the popup the active chain changed so it can hard-reset any
+        // address-bound state (current address, pending txs, sub flow, etc.).
+        chrome.runtime.sendMessage({ type: 'WALLET_CHAIN_CHANGED', key }).catch(() => {});
+        sendResponse({ ok: true });
+      });
     });
     return true;
   }
@@ -1052,7 +1179,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         user: message.user || '',
         password: message.password || '',
       };
-      chrome.storage.local.set({ chains, activeChain: key }, () => sendResponse({ ok: true }));
+      chrome.storage.local.set({ chains, activeChain: key }, () => {
+        chrome.runtime.sendMessage({ type: 'WALLET_CHAIN_CHANGED', key }).catch(() => {});
+        sendResponse({ ok: true });
+      });
     });
     return true;
   }
@@ -1255,8 +1385,12 @@ async function buildApprovalContext(method: string, params: any): Promise<any> {
 function requestApproval(_pageId: number, method: string, params: any, origin: string): Promise<any> {
   return new Promise((resolve, reject) => {
     const id = crypto.randomUUID();
-    const approval: PendingApproval = { id, method, params, origin, resolve, reject: (e) => reject(new Error(e)) };
+    const approval: PendingApproval = { id, method, params, origin, chainKey: null, resolve, reject: (e) => reject(new Error(e)) };
     pendingApprovals.push(approval);
+    // Snapshot the active chain at request time so the user can't be tricked
+    // into approving a tx against a different daemon by switching chains
+    // between the page request and the approval click.
+    getActiveChainKey().then((key) => { approval.chainKey = key; }).catch(() => {});
     // Build context asynchronously; UI polls GET_PENDING so it will pick it
     // up on a later tick if it's not ready immediately. We never block the
     // approval queue on context being available.
@@ -1278,6 +1412,17 @@ async function handlePopupApprove(id: string) {
   const idx = pendingApprovals.findIndex(p => p.id === id);
   if (idx === -1) return;
   const approval = pendingApprovals.splice(idx, 1)[0];
+  // Bind the approval to the chain it was issued under. If the user switched
+  // chains between the page request and the approval, both callRpc's daemon
+  // target and the fallback address would resolve to the new chain and sign
+  // a tx the user did not intend. Refuse execution and surface the mismatch.
+  if (approval.chainKey) {
+    const liveChain = await getActiveChainKey();
+    if (liveChain !== approval.chainKey) {
+      approval.reject(`Chain changed from ${approval.chainKey} to ${liveChain || '(none)'} — request not executed. Switch back and re-request from the page.`);
+      return;
+    }
+  }
   try {
     const result = await handleMethod(approval.method, approval.params);
     approval.resolve(result);

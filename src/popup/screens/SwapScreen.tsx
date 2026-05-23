@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import currencyMap from '../../data/currency-map.json';
+import { nativeFor } from '../../data/chains';
 
 interface Props {
   address: string;
@@ -63,6 +64,7 @@ interface EstimateResult {
 type Step = 'input' | 'confirm' | 'result';
 
 export function SwapScreen({ address, defaultFromCurrency, onComplete }: Props) {
+  const [nativeName, setNativeName] = useState<string>('VRSC');
   const [fromCurrency, setFromCurrency] = useState(defaultFromCurrency || 'VRSC');
   const [toCurrency, setToCurrency] = useState('');
   const [amount, setAmount] = useState('');
@@ -74,6 +76,14 @@ export function SwapScreen({ address, defaultFromCurrency, onComplete }: Props) 
   const [txid, setTxid] = useState('');
   const [balances, setBalances] = useState<Record<string, number>>({});
   const quoteId = useRef(0);
+
+  useEffect(() => {
+    chrome.storage.local.get(['activeChain'], ({ activeChain }) => {
+      const n = nativeFor(activeChain || null).name;
+      setNativeName(n);
+      if (!defaultFromCurrency) setFromCurrency(n);
+    });
+  }, [defaultFromCurrency]);
 
   // Update from currency when prop changes
   useEffect(() => {
@@ -100,12 +110,12 @@ export function SwapScreen({ address, defaultFromCurrency, onComplete }: Props) 
   }, [address]);
 
   const heldCurrencies = useMemo(() => {
-    const held = new Set<string>(['VRSC']);
+    const held = new Set<string>([nativeName]);
     for (const [name, bal] of Object.entries(balances)) {
       if (bal > 0) held.add(name);
     }
     return Array.from(held).sort();
-  }, [balances]);
+  }, [balances, nativeName]);
 
   const toCurrencies = useMemo(() => getSwappableCurrencies(fromCurrency), [fromCurrency]);
 
@@ -250,7 +260,7 @@ export function SwapScreen({ address, defaultFromCurrency, onComplete }: Props) 
         <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <span style={{ fontSize: 11, color: 'var(--text-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>You send</span>
-            <span onClick={() => { const fee = fromCurrency === 'VRSC' ? 0.0002 : 0; setAmount(String(Math.max(0, fromBalance - fee).toFixed(8))); }}
+            <span onClick={() => { const fee = fromCurrency === nativeName ? 0.0002 : 0; setAmount(String(Math.max(0, fromBalance - fee).toFixed(8))); }}
               style={{ fontSize: 11, color: 'var(--accent)', cursor: 'pointer' }}>
               Bal: {fromBalance.toFixed(4)}
             </span>
