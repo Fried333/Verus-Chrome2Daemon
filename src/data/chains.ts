@@ -14,6 +14,8 @@ export const CHAIN_NATIVE: Record<string, ChainNative> = {
   vDEX:  { name: 'vDEX',  iaddress: 'iHog9UCTrn95qpUBFCZ7kKz7qWdMA8MQ6N', systemId: 'iHog9UCTrn95qpUBFCZ7kKz7qWdMA8MQ6N' },
   vARRR: { name: 'vARRR', iaddress: 'iExBJfZYK7KREDpuhj6PzZBzqMAKaFg7d2', systemId: 'iExBJfZYK7KREDpuhj6PzZBzqMAKaFg7d2' },
   CHIPS: { name: 'CHIPS', iaddress: 'iJ3WZocnjG9ufv7GKUA4LijQno5gTMb7tP', systemId: 'iJ3WZocnjG9ufv7GKUA4LijQno5gTMb7tP' },
+  // Verus testnet. Native currency == system id (independent network, not PBaaS).
+  VRSCTEST: { name: 'VRSCTEST', iaddress: 'i3UXS5QPRQGNRDDqVnyWTnmFCTHDbzmsYk', systemId: 'i3UXS5QPRQGNRDDqVnyWTnmFCTHDbzmsYk' },
 };
 
 // Fallback when the active chain key isn't in the known set (user-added

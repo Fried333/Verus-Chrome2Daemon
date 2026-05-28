@@ -17,10 +17,11 @@ type OsKey = 'linux' | 'mac' | 'win';
 
 // Default port hints per known chain.
 const CHAIN_PRESETS: Record<string, { port: string }> = {
-  VRSC:  { port: '27486' },
-  vDEX:  { port: '21778' },
-  vARRR: { port: '20778' },
-  CHIPS: { port: '22778' },
+  VRSC:     { port: '27486' },
+  vDEX:     { port: '21778' },
+  vARRR:    { port: '20778' },
+  CHIPS:    { port: '22778' },
+  VRSCTEST: { port: '18843' },
 };
 
 // PBaaS subdir name = hash160 of reversed system_id, deterministic per chain.
@@ -50,6 +51,13 @@ const CONF_PATHS: Record<string, Record<OsKey, string>> = {
     linux: `~/.verus/pbaas/${PBAAS_HASH.CHIPS}/${PBAAS_HASH.CHIPS}.conf`,
     mac:   `~/Library/Application Support/Verus/pbaas/${PBAAS_HASH.CHIPS}/${PBAAS_HASH.CHIPS}.conf`,
     win:   `%APPDATA%\\Verus\\pbaas\\${PBAAS_HASH.CHIPS}\\${PBAAS_HASH.CHIPS}.conf`,
+  },
+  // VRSCTEST is an independent test network (verusd -testnet), not a PBaaS
+  // child, so its conf lives in the Komodo data dir like VRSC — not under pbaas/.
+  VRSCTEST: {
+    linux: '~/.komodo/vrsctest/vrsctest.conf',
+    mac:   '~/Library/Application Support/Komodo/vrsctest/vrsctest.conf',
+    win:   '%APPDATA%\\Komodo\\vrsctest\\vrsctest.conf',
   },
 };
 
